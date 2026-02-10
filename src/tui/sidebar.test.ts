@@ -10,7 +10,7 @@
  * rather than shared module-level vi.fn() refs, which avoids Bun's
  * vi.mock hoisting issues with const/let variables.
  */
-import { afterAll, beforeEach, describe, expect, it, mock, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SidebarState } from "./sidebar";
 import { createSidebar } from "./sidebar";
@@ -60,10 +60,6 @@ describe("createSidebar", () => {
       entries: [],
       selectedIndex: 0,
     };
-  });
-
-  afterAll(() => {
-    mock.restore();
   });
 
   it("returns container and control methods", () => {

@@ -16,16 +16,32 @@ import {
 import { runEmailFlow, runInteractiveLogin, runWalletFlow } from "./flows";
 import { saveCredentials } from "./store";
 
-// Mock readline for prompts — use vi.spyOn instead of vi.mock to prevent
-// cross-file contamination (vi.mock leaks across files in Bun 1.x).
+// Mock node:readline — vi.mock works with ESM (vi.spyOn does not)
 const mockQuestion = vi.fn();
 const mockClose = vi.fn();
 
-let readlineSpy: ReturnType<typeof vi.spyOn> | undefined;
-let clientSpies: ReturnType<typeof vi.spyOn>[] = [];
+vi.mock("node:readline", () => ({
+  createInterface: () => ({
+    question: mockQuestion,
+    close: mockClose,
+  }),
+}));
 
-// Keep vi.mock for modules that no downstream test needs as real:
-// ./store (store.test.ts runs before this file) and ./google-server
+// Mock auth client
+vi.mock("./client", () => ({
+  emailRequestCode: vi.fn().mockResolvedValue({ success: true }),
+  emailVerifyCode: vi.fn().mockResolvedValue({
+    auth: { token: "email-jwt", expires_at: 1700000000 },
+  }),
+  createNonce: vi.fn().mockResolvedValue({ nonce: "test-nonce" }),
+  createAuthToken: vi.fn().mockResolvedValue({
+    auth: { token: "wallet-jwt", expires_at: 1700000000 },
+  }),
+  googleSignIn: vi.fn().mockResolvedValue({
+    auth: { token: "google-jwt", expires_at: 1700000000 },
+  }),
+}));
+
 vi.mock("./store", () => ({
   saveCredentials: vi.fn(),
 }));
@@ -51,41 +67,11 @@ function setPromptAnswers(...answers: string[]): void {
 
 // ─── Setup ──────────────────────────────────────────────────────────────────
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.clearAllMocks();
-
-  // Spy on node:readline to return mock interface (prevents contaminating piped.test.ts)
-  const readline = await import("node:readline");
-  readlineSpy = vi.spyOn(readline, "createInterface").mockReturnValue({
-    question: mockQuestion,
-    close: mockClose,
-  } as any);
-
-  // Spy on ./client functions (prevents contaminating client.test.ts)
-  const client = await import("./client");
-  clientSpies = [
-    vi
-      .spyOn(client, "emailRequestCode")
-      .mockResolvedValue({ success: true } as any),
-    vi.spyOn(client, "emailVerifyCode").mockResolvedValue({
-      auth: { token: "email-jwt", expires_at: 1700000000 },
-    } as any),
-    vi
-      .spyOn(client, "createNonce")
-      .mockResolvedValue({ nonce: "test-nonce" } as any),
-    vi.spyOn(client, "createAuthToken").mockResolvedValue({
-      auth: { token: "wallet-jwt", expires_at: 1700000000 },
-    } as any),
-    vi.spyOn(client, "googleSignIn").mockResolvedValue({
-      auth: { token: "google-jwt", expires_at: 1700000000 },
-    } as any),
-  ];
 });
 
 afterEach(() => {
-  readlineSpy?.mockRestore();
-  for (const spy of clientSpies) spy.mockRestore();
-  clientSpies = [];
   vi.restoreAllMocks();
 });
 

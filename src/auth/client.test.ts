@@ -251,11 +251,20 @@ describe("refreshAuthToken", () => {
 });
 
 describe("missing environment variables", () => {
-  it("throws when TALENT_PRO_URL is missing", async () => {
+  it("falls back to default URL when TALENT_PRO_URL is missing", async () => {
     delete process.env.TALENT_PRO_URL;
 
-    await expect(emailRequestCode("user@test.com")).rejects.toThrow(
-      "TALENT_PRO_URL is not set",
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ success: true }), { status: 200 }),
+      );
+
+    await emailRequestCode("user@test.com");
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pro.talent.app/api/auth/email-request-code",
+      expect.anything(),
     );
   });
 });

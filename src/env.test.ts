@@ -10,55 +10,33 @@ import { validateEnv } from "./env";
 
 describe("validateEnv", () => {
   const originalEnv = { ...process.env };
-  let mockExit: ReturnType<typeof vi.spyOn>;
-  let mockConsoleError: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-      throw new Error("process.exit called");
-    }) as any);
-    mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-  });
 
   afterEach(() => {
     process.env = { ...originalEnv };
-    vi.restoreAllMocks();
   });
 
-  it("passes when TALENT_PRO_URL is set", () => {
-    process.env.TALENT_PRO_URL = "https://pro.talent.app";
+  it("keeps TALENT_PRO_URL when already set", () => {
+    process.env.TALENT_PRO_URL = "https://custom.example.com";
 
-    // Should not throw or call process.exit
-    expect(() => validateEnv()).not.toThrow();
-    expect(mockExit).not.toHaveBeenCalled();
+    validateEnv();
+
+    expect(process.env.TALENT_PRO_URL).toBe("https://custom.example.com");
   });
 
-  it("exits with error when TALENT_PRO_URL is missing", () => {
+  it("defaults TALENT_PRO_URL when not set", () => {
     delete process.env.TALENT_PRO_URL;
 
-    expect(() => validateEnv()).toThrow("process.exit called");
-    expect(mockExit).toHaveBeenCalledWith(1);
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      "Missing required environment variables:",
-    );
-    expect(mockConsoleError).toHaveBeenCalledWith("  - TALENT_PRO_URL");
+    validateEnv();
+
+    expect(process.env.TALENT_PRO_URL).toBe("https://pro.talent.app");
   });
 
-  it("treats empty string as missing", () => {
+  it("defaults TALENT_PRO_URL when empty string", () => {
     process.env.TALENT_PRO_URL = "";
 
-    expect(() => validateEnv()).toThrow("process.exit called");
-    expect(mockExit).toHaveBeenCalledWith(1);
-  });
+    validateEnv();
 
-  it("includes hint about .env file location", () => {
-    delete process.env.TALENT_PRO_URL;
-
-    expect(() => validateEnv()).toThrow("process.exit called");
-
-    // Should include the hint about where to create the .env file
-    const allCalls = mockConsoleError.mock.calls.map((c) => c[0]);
-    expect(allCalls.some((c: string) => c.includes(".env file"))).toBe(true);
+    expect(process.env.TALENT_PRO_URL).toBe("https://pro.talent.app");
   });
 });
 

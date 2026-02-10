@@ -4,16 +4,7 @@
  * Tests the tool registration and execution by mocking the agent
  * and verifying the MCP server responds correctly.
  */
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  mock,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getDetail, query } from "../agent";
 
@@ -48,10 +39,6 @@ describe("startMcpServer", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  afterAll(() => {
-    mock.restore();
   });
 
   it("registers three tools and connects transport", async () => {

@@ -1,16 +1,7 @@
 /**
  * Unit tests for the programmatic TalentSearch API.
  */
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  mock,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getDetail as mockGetDetail, query as mockQuery } from "./agent";
 import { TalentSearch } from "./lib";
@@ -29,10 +20,6 @@ describe("TalentSearch", () => {
   beforeEach(() => {
     ts = new TalentSearch();
     vi.clearAllMocks();
-  });
-
-  afterAll(() => {
-    mock.restore();
   });
 
   describe("search", () => {

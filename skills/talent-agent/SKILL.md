@@ -122,7 +122,7 @@ All JSON and pipe output uses a standard envelope:
 ```json
 {
   "success": false,
-  "error": "OpenSearch is not running. Check OPENSEARCH_ENDPOINT.",
+  "error": "Service unreachable. Check TALENT_PRO_URL.",
   "code": "CONNECTION_ERROR"
 }
 ```

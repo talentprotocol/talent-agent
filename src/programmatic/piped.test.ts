@@ -2,16 +2,7 @@
  * Unit tests for piped JSONL mode.
  */
 import { Readable } from "node:stream";
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  mock,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getDetail, query } from "../agent";
 
@@ -39,10 +30,6 @@ describe("piped mode", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  afterAll(() => {
-    mock.restore();
   });
 
   function createMockStdin(lines: string[]): void {

@@ -1,16 +1,7 @@
 /**
  * Unit tests for single-shot mode.
  */
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  mock,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getDetail, query } from "../agent";
 import { formatDetailResult, formatError, formatSearchResult } from "../format";
@@ -47,10 +38,6 @@ describe("runSingleShot", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  afterAll(() => {
-    mock.restore();
   });
 
   describe("search mode (no detailIndex)", () => {

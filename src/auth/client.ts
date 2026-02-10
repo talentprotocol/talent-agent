@@ -27,8 +27,7 @@ export interface CreateNonceResponse {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function getProUrl(): string {
-  const url = process.env.TALENT_PRO_URL;
-  if (!url) throw new Error("TALENT_PRO_URL is not set");
+  const url = process.env.TALENT_PRO_URL || "https://pro.talent.app";
   return url.replace(/\/$/, "");
 }
 

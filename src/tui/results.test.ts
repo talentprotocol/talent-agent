@@ -9,7 +9,7 @@
  * methods directly on returned instances (panel.container.add) rather
  * than shared module-level vi.fn() refs.
  */
-import { afterAll, beforeEach, describe, expect, it, mock, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DetailResult, SearchResult } from "../agent";
 import { createResultsPanel } from "./results";
@@ -50,10 +50,6 @@ describe("createResultsPanel", () => {
   const mockRenderer = {} as any;
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterAll(() => {
-    mock.restore();
   });
 
   it("returns container, update, and getState", () => {

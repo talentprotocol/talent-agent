@@ -7,7 +7,6 @@ AI-powered talent profile search using natural language. CLI tool with interacti
 ### Prerequisites
 
 - [Bun](https://bun.sh/) v1.3+
-- A sibling checkout of the `talent-apps` monorepo at `../../talent-apps/`
 
 ### Setup
 
@@ -17,12 +16,10 @@ cd talent-agent
 bun install
 ```
 
-Create a `.env` file (or rely on `talent-apps/apps/talent-pro/.env`):
+Create a `.env` file in the project root:
 
 ```env
-TALENT_PROTOCOL_API_URL=https://...
-TALENT_PROTOCOL_API_KEY=your-key
-TALENT_PRO_URL=https://...
+TALENT_PRO_URL=https://pro.talent.app
 ```
 
 ### Authentication
@@ -288,9 +285,7 @@ Add to `claude_desktop_config.json`:
 
 | Variable | Required | Description |
 | -------- | -------- | ----------- |
-| `TALENT_PROTOCOL_API_URL` | Yes | Talent Protocol API base URL |
-| `TALENT_PROTOCOL_API_KEY` | Yes | API key for the Talent Protocol API |
-| `TALENT_PRO_URL` | Yes | Talent Pro app URL (for agent API) |
+| `TALENT_PRO_URL` | No | Talent Pro app URL (default: `https://pro.talent.app`) |
 | `TALENT_CLI_SESSION` | No | Default session ID |
 | `NO_COLOR` | No | Disable ANSI color output |
 
@@ -331,7 +326,6 @@ src/
   format.ts             Terminal formatters (ANSI) for human-readable output
   env.ts                Environment variable loading and validation
   lib.ts                Programmatic TS/JS API (TalentSearch class)
-  preload.ts            Bun preload: mocks Next.js/React modules
   auth/                 Authentication (email, Google, wallet)
   programmatic/
     single-shot.ts      Single-shot mode

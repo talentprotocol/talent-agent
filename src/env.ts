@@ -1,29 +1,23 @@
 /**
  * Environment variable loading and validation for the CLI.
  *
- * Loads .env from the CLI directory or talent-pro app directory.
- * Only TALENT_PRO_URL is required — all auth and agent calls go through talent-pro.
+ * Loads .env from the talent-agent project directory.
+ * TALENT_PRO_URL defaults to https://pro.talent.app if not set.
  */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-const REQUIRED_ENV_VARS = ["TALENT_PRO_URL"] as const;
+const DEFAULT_TALENT_PRO_URL = "https://pro.talent.app";
 
 /**
- * Load environment variables from .env files.
- * Tries talent-agent/.env first, then falls back to talent-apps/apps/talent-pro/.env.
+ * Load environment variables from the .env file in the project root.
  */
 export function loadEnv(): void {
   const cliDir = resolve(import.meta.dir, "..");
-  const proDir = resolve(cliDir, "..", "talent-apps", "apps", "talent-pro");
+  const envPath = resolve(cliDir, ".env");
 
-  const envPaths = [resolve(cliDir, ".env"), resolve(proDir, ".env")];
-
-  for (const envPath of envPaths) {
-    if (existsSync(envPath)) {
-      parseEnvSync(envPath);
-      break;
-    }
+  if (existsSync(envPath)) {
+    parseEnvSync(envPath);
   }
 }
 
@@ -51,28 +45,10 @@ function parseEnvSync(filePath: string): void {
 }
 
 /**
- * Validate that all required environment variables are set.
- * Exits with a clear error message if any are missing.
+ * Apply defaults for optional env vars and validate the environment.
  */
 export function validateEnv(): void {
-  const missing: string[] = [];
-  for (const envVar of REQUIRED_ENV_VARS) {
-    if (!process.env[envVar]) {
-      missing.push(envVar);
-    }
-  }
-
-  if (missing.length > 0) {
-    console.error("Missing required environment variables:");
-    for (const v of missing) {
-      console.error(`  - ${v}`);
-    }
-    console.error(
-      "\nCreate a .env file in talent-agent/ with these variables.",
-    );
-    console.error(
-      "You can also place it in talent-apps/apps/talent-pro/.env as a fallback.",
-    );
-    process.exit(1);
+  if (!process.env.TALENT_PRO_URL) {
+    process.env.TALENT_PRO_URL = DEFAULT_TALENT_PRO_URL;
   }
 }
