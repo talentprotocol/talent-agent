@@ -1,19 +1,16 @@
 /**
  * Unit tests for agent session management, query, and getDetail.
  *
- * Tests session CRUD, persistence (save/load), extractTextResponse,
- * extractToolNames, extractTokenUsage, and the main query/getDetail flows.
+ * Tests session CRUD, persistence (save/load), and the main query/getDetail
+ * flows using mocked fetch (remote API) + mocked getValidToken (auth store).
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { talentAgent } from "../../talent-apps/apps/talent-pro/app/lib/agents/talent-agent";
 import {
-  buildResult,
   createSession,
-  extractToolResults,
   getAllSessions,
   getDetail,
   getOrCreateSession,
@@ -23,15 +20,79 @@ import {
   saveSession,
 } from "./agent";
 
-// Mock the talent agent before importing
-vi.mock(
-  "../../talent-apps/apps/talent-pro/app/lib/agents/talent-agent",
-  () => ({
-    talentAgent: {
-      generate: vi.fn(),
+// Mock the auth store so query() gets a valid token
+vi.mock("./auth/store", () => ({
+  getValidToken: vi.fn().mockResolvedValue("mock-token"),
+}));
+
+// Mock the errors module to avoid dependency issues
+vi.mock("./errors", () => ({
+  toAIFriendlyError: vi.fn((err: unknown) => ({
+    message: err instanceof Error ? err.message : String(err),
+    code: "UNKNOWN",
+  })),
+}));
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Build a fake AI SDK UI message stream body string.
+ * Format: TYPE_CODE:JSON_DATA per line.
+ */
+function buildStreamBody(parts: {
+  textParts?: string[];
+  toolCalls?: { toolCallId: string; toolName: string; args: unknown }[];
+  toolResults?: { toolCallId: string; result: unknown }[];
+  error?: string;
+}): string {
+  const lines: string[] = [];
+
+  for (const tc of parts.toolCalls ?? []) {
+    lines.push(`9:${JSON.stringify(tc)}`);
+  }
+  for (const text of parts.textParts ?? []) {
+    lines.push(`0:${JSON.stringify(text)}`);
+  }
+  for (const tr of parts.toolResults ?? []) {
+    lines.push(`a:${JSON.stringify(tr)}`);
+  }
+  if (parts.error) {
+    lines.push(`3:${JSON.stringify(parts.error)}`);
+  }
+  lines.push(`d:${JSON.stringify({ finishReason: "stop" })}`);
+
+  return lines.join("\n") + "\n";
+}
+
+function mockFetchResponse(body: string, status = 200): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(body));
+      controller.close();
     },
-  }),
-);
+  });
+
+  return new Response(stream, {
+    status,
+    headers: { "Content-Type": "text/plain" },
+  });
+}
+
+// ─── Setup ──────────────────────────────────────────────────────────────────
+
+const originalEnv = { ...process.env };
+
+beforeEach(() => {
+  process.env.TALENT_PRO_URL = "http://localhost:3000";
+});
+
+afterEach(() => {
+  process.env = { ...originalEnv };
+  vi.restoreAllMocks();
+});
+
+// ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("session management", () => {
   it("createSession returns a string id", () => {
@@ -128,7 +189,9 @@ describe("session persistence", () => {
   it("loadSession loads session from file and returns session id", () => {
     const sessionData = {
       id: "loaded-session",
-      messages: [{ role: "user", content: "Find React devs" }],
+      messages: [
+        { role: "user", parts: [{ type: "text", text: "Find React devs" }] },
+      ],
       lastResult: null,
     };
 
@@ -143,7 +206,6 @@ describe("session persistence", () => {
     const session = getSession("loaded-session");
     expect(session).toBeDefined();
     expect(session!.messages).toHaveLength(1);
-    expect(session!.messages[0]!.content).toBe("Find React devs");
   });
 
   it("round-trips a session through save and load", () => {
@@ -151,8 +213,14 @@ describe("session persistence", () => {
     const session = getSession(id)!;
 
     // Add some data to the session
-    session.messages.push({ role: "user", content: "Test query" });
-    session.messages.push({ role: "assistant", content: "Test response" });
+    session.messages.push({
+      role: "user",
+      parts: [{ type: "text", text: "Test query" }],
+    } as any);
+    session.messages.push({
+      role: "assistant",
+      parts: [{ type: "text", text: "Test response" }],
+    } as any);
     session.lastResult = {
       type: "search",
       session: id,
@@ -180,56 +248,43 @@ describe("query", () => {
     vi.clearAllMocks();
   });
 
-  it("sends query to agent and returns structured result", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [
+  it("sends query to remote API and returns structured search result", async () => {
+    const body = buildStreamBody({
+      toolCalls: [
         {
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: "tc-1",
-              toolName: "searchProfiles",
-              input: { query: "Find React devs" },
-            },
-          ],
-        },
-        {
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: "tc-1",
-              output: {
-                profiles: [{ id: "p1", displayName: "Jane Doe" }],
-                totalMatches: 1,
-                appliedFilters: {},
-              },
-            },
-          ],
-        },
-        {
-          content: [{ type: "text", text: "Found 1 developer." }],
+          toolCallId: "tc-1",
+          toolName: "searchProfiles",
+          args: { query: "Find React devs" },
         },
       ],
-      usage: { totalTokens: 500 },
-    } as any);
+      toolResults: [
+        {
+          toolCallId: "tc-1",
+          result: {
+            profiles: [{ id: "p1", displayName: "Jane Doe" }],
+            totalMatches: 1,
+            appliedFilters: {},
+          },
+        },
+      ],
+      textParts: ["Found 1 developer."],
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
 
     const result = await query("Find React devs");
 
     expect(result.result.type).toBe("search");
-    expect(result.meta.tokensUsed).toBe(500);
     expect(result.meta.toolsCalled).toContain("searchProfiles");
     expect(result.meta.durationMs).toBeGreaterThanOrEqual(0);
   });
 
   it("stores messages in session history", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [
-        {
-          content: [{ type: "text", text: "Response text" }],
-        },
-      ],
-      usage: { totalTokens: 100 },
-    } as any);
+    const body = buildStreamBody({
+      textParts: ["Response text"],
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
 
     const sessionId = createSession();
     await query("Test query", sessionId);
@@ -237,30 +292,36 @@ describe("query", () => {
     const session = getSession(sessionId)!;
     expect(session.messages).toHaveLength(2); // user + assistant
     expect(session.messages[0]!.role).toBe("user");
-    expect(session.messages[0]!.content).toBe("Test query");
     expect(session.messages[1]!.role).toBe("assistant");
   });
 
-  it("returns error result when agent throws", async () => {
-    vi.mocked(talentAgent.generate).mockRejectedValue(
-      new Error("connect ECONNREFUSED 127.0.0.1:9200"),
-    );
+  it("returns error result when fetch throws", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("fetch failed"));
 
     const result = await query("Find devs");
 
     expect(result.result.type).toBe("error");
     if (result.result.type === "error") {
-      expect(result.result.error).toContain("OpenSearch");
-      expect(result.result.code).toBe("CONNECTION_ERROR");
+      expect(result.result.error).toContain("fetch failed");
     }
-    expect(result.meta.tokensUsed).toBe(0);
+  });
+
+  it("returns error result when not authenticated", async () => {
+    const { getValidToken } = await import("./auth/store");
+    vi.mocked(getValidToken).mockResolvedValueOnce(null);
+
+    const result = await query("Find devs");
+
+    expect(result.result.type).toBe("error");
+    if (result.result.type === "error") {
+      expect(result.result.error).toContain("Not authenticated");
+      expect(result.result.code).toBe("AUTH_ERROR");
+    }
   });
 
   it("creates a new session when none is provided", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [],
-      usage: { totalTokens: 0 },
-    } as any);
+    const body = buildStreamBody({ textParts: ["ok"] });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
 
     const result = await query("Test");
 
@@ -268,15 +329,26 @@ describe("query", () => {
   });
 
   it("uses existing session when sessionId is provided", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [],
-      usage: { totalTokens: 0 },
-    } as any);
+    const body = buildStreamBody({ textParts: ["ok"] });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
 
     const sessionId = createSession();
     const result = await query("Test", sessionId);
 
     expect(result.result.session).toBe(sessionId);
+  });
+
+  it("returns error when API responds with non-200 status", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await query("Find devs");
+
+    expect(result.result.type).toBe("error");
   });
 });
 
@@ -307,33 +379,22 @@ describe("getDetail", () => {
 
   it("returns error when profile index is out of range", async () => {
     // Create a session with search results
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [
+    const searchBody = buildStreamBody({
+      toolCalls: [{ toolCallId: "tc-1", toolName: "searchProfiles", args: {} }],
+      toolResults: [
         {
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: "tc-1",
-              toolName: "searchProfiles",
-              input: {},
-            },
-          ],
-        },
-        {
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: "tc-1",
-              output: {
-                profiles: [{ id: "p1", displayName: "Jane" }],
-                totalMatches: 1,
-              },
-            },
-          ],
+          toolCallId: "tc-1",
+          result: {
+            profiles: [{ id: "p1", displayName: "Jane" }],
+            totalMatches: 1,
+          },
         },
       ],
-      usage: { totalTokens: 100 },
-    } as any);
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      mockFetchResponse(searchBody),
+    );
 
     const sessionId = createSession();
     await query("Find devs", sessionId);
@@ -349,175 +410,75 @@ describe("getDetail", () => {
   });
 
   it("sends detail request to agent for valid index", async () => {
-    // Set up session with search results
-    vi.mocked(talentAgent.generate).mockResolvedValueOnce({
-      steps: [
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    // First call: search results
+    const searchBody = buildStreamBody({
+      toolCalls: [{ toolCallId: "tc-1", toolName: "searchProfiles", args: {} }],
+      toolResults: [
         {
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: "tc-1",
-              toolName: "searchProfiles",
-              input: {},
-            },
-          ],
-        },
-        {
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: "tc-1",
-              output: {
-                profiles: [
-                  { id: "p1", displayName: "Jane Doe", name: "Jane Doe" },
-                ],
-                totalMatches: 1,
-              },
-            },
-          ],
+          toolCallId: "tc-1",
+          result: {
+            profiles: [{ id: "p1", displayName: "Jane Doe", name: "Jane Doe" }],
+            totalMatches: 1,
+          },
         },
       ],
-      usage: { totalTokens: 100 },
-    } as any);
+    });
+
+    fetchSpy.mockResolvedValueOnce(mockFetchResponse(searchBody));
 
     const sessionId = createSession();
     await query("Find devs", sessionId);
 
-    // Mock the detail response
-    vi.mocked(talentAgent.generate).mockResolvedValueOnce({
-      steps: [
+    // Second call: detail response
+    const detailBody = buildStreamBody({
+      toolCalls: [
         {
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: "tc-2",
-              toolName: "getProfileDetails",
-              input: { profileId: "p1" },
-            },
-          ],
-        },
-        {
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: "tc-2",
-              output: {
-                success: true,
-                profile: {
-                  id: "p1",
-                  displayName: "Jane Doe",
-                  mainRole: "Engineer",
-                },
-              },
-            },
-          ],
+          toolCallId: "tc-2",
+          toolName: "getProfileDetails",
+          args: { profileId: "p1" },
         },
       ],
-      usage: { totalTokens: 200 },
-    } as any);
+      toolResults: [
+        {
+          toolCallId: "tc-2",
+          result: {
+            success: true,
+            profile: {
+              id: "p1",
+              displayName: "Jane Doe",
+              mainRole: "Engineer",
+            },
+          },
+        },
+      ],
+    });
+
+    fetchSpy.mockResolvedValueOnce(mockFetchResponse(detailBody));
 
     const result = await getDetail(sessionId, 0);
 
     expect(result.result.type).toBe("detail");
-    // The agent should have been called with a message about Jane Doe
-    expect(talentAgent.generate).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("extractTextResponse (via query)", () => {
-  it("extracts text content from response steps", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [
-        {
-          content: [
-            { type: "text", text: "Found results: " },
-            { type: "text", text: "1 developer matched." },
-          ],
-        },
-      ],
-      usage: { totalTokens: 50 },
-    } as any);
-
-    const sessionId = createSession();
-    const result = await query("Test", sessionId);
-
-    // The text should be extracted and stored in the session
-    const session = getSession(sessionId)!;
-    const assistantMsg = session.messages.find((m) => m.role === "assistant");
-    expect(assistantMsg?.content).toContain("Found results:");
-    expect(assistantMsg?.content).toContain("1 developer matched.");
-  });
-
-  it("returns empty string when no text content in steps", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [
-        {
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: "tc-1",
-              toolName: "searchProfiles",
-              input: {},
-            },
-          ],
-        },
-      ],
-      usage: { totalTokens: 50 },
-    } as any);
-
-    const sessionId = createSession();
-    await query("Test", sessionId);
-
-    const session = getSession(sessionId)!;
-    const assistantMsg = session.messages.find((m) => m.role === "assistant");
-    expect(assistantMsg?.content).toBe("");
-  });
-});
-
-describe("extractTokenUsage (via query meta)", () => {
-  it("extracts token usage from response", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [],
-      usage: { totalTokens: 1234 },
-    } as any);
-
-    const result = await query("Test");
-    expect(result.meta.tokensUsed).toBe(1234);
-  });
-
-  it("returns 0 when no usage info", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [],
-    } as any);
-
-    const result = await query("Test");
-    expect(result.meta.tokensUsed).toBe(0);
+    // The fetch should have been called twice (search + detail)
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
 
 describe("extractToolNames (via query meta)", () => {
-  it("extracts tool names from tool-call steps", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [
-        {
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: "tc-1",
-              toolName: "searchProfiles",
-              input: {},
-            },
-            {
-              type: "tool-call",
-              toolCallId: "tc-2",
-              toolName: "getProfileDetails",
-              input: {},
-            },
-          ],
-        },
+  it("extracts tool names from stream response", async () => {
+    const body = buildStreamBody({
+      toolCalls: [
+        { toolCallId: "tc-1", toolName: "searchProfiles", args: {} },
+        { toolCallId: "tc-2", toolName: "getProfileDetails", args: {} },
       ],
-      usage: { totalTokens: 100 },
-    } as any);
+      toolResults: [
+        { toolCallId: "tc-1", result: { profiles: [] } },
+        { toolCallId: "tc-2", result: { success: true, profile: {} } },
+      ],
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
 
     const result = await query("Test");
     expect(result.meta.toolsCalled).toEqual([
@@ -527,14 +488,11 @@ describe("extractToolNames (via query meta)", () => {
   });
 
   it("returns empty array when no tool calls", async () => {
-    vi.mocked(talentAgent.generate).mockResolvedValue({
-      steps: [
-        {
-          content: [{ type: "text", text: "Just text" }],
-        },
-      ],
-      usage: { totalTokens: 50 },
-    } as any);
+    const body = buildStreamBody({
+      textParts: ["Just text"],
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
 
     const result = await query("Test");
     expect(result.meta.toolsCalled).toEqual([]);

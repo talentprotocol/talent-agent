@@ -26,12 +26,12 @@ describe("exit code constants", () => {
 
 describe("toAIFriendlyError", () => {
   it("handles ECONNREFUSED errors", () => {
-    const error = new Error("connect ECONNREFUSED 127.0.0.1:9200");
+    const error = new Error("connect ECONNREFUSED 127.0.0.1:3000");
     const result = toAIFriendlyError(error);
 
     expect(result.code).toBe("CONNECTION_ERROR");
-    expect(result.message).toContain("OpenSearch");
-    expect(result.message).toContain("OPENSEARCH_ENDPOINT");
+    expect(result.message).toContain("Cannot connect");
+    expect(result.message).toContain("TALENT_PRO_URL");
   });
 
   it("handles 401 Unauthorized errors", () => {
@@ -40,15 +40,15 @@ describe("toAIFriendlyError", () => {
     );
 
     expect(result.code).toBe("AUTH_ERROR");
-    expect(result.message).toContain("API key");
-    expect(result.message).toContain("ANTHROPIC_API_KEY");
+    expect(result.message).toContain("token");
+    expect(result.message).toContain("login");
   });
 
   it("handles Unauthorized string in error", () => {
     const result = toAIFriendlyError(new Error("Unauthorized access"));
 
     expect(result.code).toBe("AUTH_ERROR");
-    expect(result.message).toContain("API key");
+    expect(result.message).toContain("token");
   });
 
   it("handles rate_limit errors", () => {

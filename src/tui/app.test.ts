@@ -15,6 +15,19 @@ vi.mock("../agent", () => ({
   getDetail: vi.fn(),
 }));
 
+// Mock the auth store and flows (TUI checks auth on startup)
+vi.mock("../auth/store", () => ({
+  getValidToken: vi.fn().mockResolvedValue("mock-token"),
+}));
+
+vi.mock("../auth/flows", () => ({
+  runInteractiveLogin: vi.fn().mockResolvedValue({
+    token: "mock-token",
+    expiresAt: 9999999999,
+    authMethod: "email",
+  }),
+}));
+
 // Track keyboard handlers
 const keyHandlers: ((key: { name: string }) => void)[] = [];
 const inputHandlers: Map<string, (value: string) => void> = new Map();

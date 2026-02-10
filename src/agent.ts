@@ -1,19 +1,21 @@
 /**
- * Agent wrapper for the Talent CLI.
+ * Agent client for the Talent CLI.
  *
- * Manages conversation sessions and extracts structured tool results
- * (profile lists, detail views) from the agent response steps.
- * The agent's text response is secondary metadata, not the primary output.
+ * Instead of running the agent locally, this module calls talent-pro's
+ * /api/chat endpoint over HTTP with a Bearer token and parses the
+ * streamed AI SDK UI message response.
+ *
+ * Manages local conversation sessions (message history) and extracts
+ * structured tool results (profile lists, detail views) from the response.
  */
 import { nanoid } from "nanoid";
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { talentAgent } from "../../talent-apps/apps/talent-pro/app/lib/agents/talent-agent";
-import type { DetailedProfile } from "../../talent-apps/apps/talent-pro/app/lib/services/tools/get-profile-details";
+import { getValidToken } from "./auth/store";
 import { toAIFriendlyError } from "./errors";
 import type { ErrorCode } from "./errors";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 /** Profile summary returned from searchProfiles tool */
 export interface ProfileSummary {
@@ -31,6 +33,65 @@ export interface ProfileSummary {
   linkedinCurrentTitle?: string;
   linkedinCurrentCompany?: string;
   linkedinYearsExperience?: number;
+}
+
+/** Detailed profile (mirrors talent-pro's DetailedProfile type) */
+export interface DetailedProfile {
+  id: string;
+  displayName: string | null;
+  name: string | null;
+  bio: string | null;
+  imageUrl?: string | null;
+  mainRole: string | null | undefined;
+  location: string | null;
+  humanCheckmark?: boolean;
+  openTo?: string | null | undefined;
+  tags: string[];
+
+  github?: {
+    topLanguages: string | null | undefined;
+    topFrameworks: string | null | undefined;
+    technologyTags?: string | null | undefined;
+    expertiseLevel: string | null | undefined;
+    developerArchetype?: string | null | undefined;
+    totalContributions: number | null | undefined;
+    isRecentlyActive: boolean | null | undefined;
+    activitySummary?: {
+      summary: string;
+      focusAreas: string;
+      consistencyScore?: number;
+      generatedAt?: string;
+    } | null;
+  };
+
+  workExperience?: Array<{
+    title: string;
+    company: string;
+    description: string;
+    durationMonths: number;
+    startDate?: string;
+    endDate?: string;
+    isCurrent: boolean;
+    location?: string;
+  }>;
+
+  education?: Array<{
+    degree: string;
+    fieldOfStudy: string;
+    school: string;
+    startYear: number;
+    endYear: number;
+    description?: string;
+  }>;
+
+  linkedin?: {
+    currentTitle: string | null | undefined;
+    currentCompany: string | null | undefined;
+    jobTitles?: string | null | undefined;
+    companies?: string | null | undefined;
+    totalYearsExperience: number | null | undefined;
+    hasCurrentJob?: boolean | null | undefined;
+  };
 }
 
 export interface SearchResult {
@@ -66,19 +127,22 @@ export interface AgentMeta {
   toolsCalled: string[];
 }
 
-// ─── Internal types for step parsing ─────────────────────────────────────────
+// ─── Internal types ─────────────────────────────────────────────────────────
 
-interface ToolCallContent {
-  type: "tool-call";
-  toolCallId: string;
-  toolName: string;
-  input: Record<string, unknown>;
+interface UIMessagePart {
+  type: string;
+  text?: string;
+  toolCallId?: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
+  state?: string;
+  output?: unknown;
 }
 
-interface ToolResultContent {
-  type: "tool-result";
-  toolCallId: string;
-  output: unknown;
+interface UIMessage {
+  id?: string;
+  role: "user" | "assistant" | "system";
+  parts: UIMessagePart[];
 }
 
 interface ConversationMessage {
@@ -88,11 +152,11 @@ interface ConversationMessage {
 
 interface Session {
   id: string;
-  messages: ConversationMessage[];
+  messages: UIMessage[];
   lastResult: AgentResult | null;
 }
 
-// ─── Session Store ───────────────────────────────────────────────────────────
+// ─── Session Store ──────────────────────────────────────────────────────────
 
 const sessions = new Map<string, Session>();
 
@@ -121,11 +185,11 @@ export function getAllSessions(): Session[] {
   return Array.from(sessions.values());
 }
 
-// ─── Session Persistence ─────────────────────────────────────────────────────
+// ─── Session Persistence ────────────────────────────────────────────────────
 
 interface SerializedSession {
   id: string;
-  messages: ConversationMessage[];
+  messages: UIMessage[];
   lastResult: AgentResult | null;
 }
 
@@ -154,258 +218,183 @@ export function loadSession(filePath: string): string {
   return session.id;
 }
 
-// ─── Response Extraction ─────────────────────────────────────────────────────
+// ─── Remote API Client ──────────────────────────────────────────────────────
 
-type AgentResponse = Awaited<ReturnType<typeof talentAgent.generate>>;
-
-function extractTextResponse(response: AgentResponse): string {
-  const steps = (response as { steps?: Array<{ content?: unknown[] }> }).steps;
-  if (!steps) return "";
-
-  const textParts: string[] = [];
-  for (const step of steps) {
-    if (!step.content) continue;
-    for (const content of step.content) {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        "type" in content &&
-        content.type === "text" &&
-        "text" in content
-      ) {
-        textParts.push(String((content as { text: string }).text));
-      }
-    }
-  }
-  return textParts.join("\n");
-}
-
-export function extractToolResults(
-  response: AgentResponse,
-): { toolName: string; result: unknown }[] {
-  const results: { toolName: string; result: unknown }[] = [];
-  const toolCallMap = new Map<string, string>();
-
-  const steps = (response as { steps?: Array<{ content?: unknown[] }> }).steps;
-  if (!steps) return results;
-
-  for (const step of steps) {
-    if (!step.content) continue;
-    for (const content of step.content) {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        "type" in content &&
-        content.type === "tool-call"
-      ) {
-        const toolCall = content as ToolCallContent;
-        toolCallMap.set(toolCall.toolCallId, toolCall.toolName);
-      }
-    }
-  }
-
-  for (const step of steps) {
-    if (!step.content) continue;
-    for (const content of step.content) {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        "type" in content &&
-        content.type === "tool-result"
-      ) {
-        const toolResult = content as ToolResultContent;
-        const toolName = toolCallMap.get(toolResult.toolCallId) || "unknown";
-        results.push({ toolName, result: toolResult.output });
-      }
-    }
-  }
-
-  return results;
+function getTalentProUrl(): string {
+  const url = process.env.TALENT_PRO_URL;
+  if (!url) throw new Error("TALENT_PRO_URL is not set");
+  return url.replace(/\/$/, "");
 }
 
 /**
- * Extract all tool call names from the response (for metadata).
- */
-function extractToolNames(response: AgentResponse): string[] {
-  const names: string[] = [];
-  const steps = (response as { steps?: Array<{ content?: unknown[] }> }).steps;
-  if (!steps) return names;
-
-  for (const step of steps) {
-    if (!step.content) continue;
-    for (const content of step.content) {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        "type" in content &&
-        content.type === "tool-call"
-      ) {
-        names.push((content as ToolCallContent).toolName);
-      }
-    }
-  }
-  return names;
-}
-
-/**
- * Extract token usage from the response.
- */
-function extractTokenUsage(response: AgentResponse): number {
-  const resp = response as { usage?: { totalTokens?: number } };
-  return resp.usage?.totalTokens ?? 0;
-}
-
-/**
- * Print debug information for a response to stderr.
- */
-function printDebugInfo(response: AgentResponse, durationMs: number): void {
-  const steps = (response as { steps?: Array<{ content?: unknown[] }> }).steps;
-  if (!steps) return;
-
-  for (const step of steps) {
-    if (!step.content) continue;
-    for (const content of step.content) {
-      if (
-        typeof content === "object" &&
-        content !== null &&
-        "type" in content &&
-        content.type === "tool-call"
-      ) {
-        const tc = content as ToolCallContent;
-        process.stderr.write(`[debug] Agent calling: ${tc.toolName}\n`);
-        process.stderr.write(
-          `[debug] Tool input: ${JSON.stringify(tc.input)}\n`,
-        );
-      }
-    }
-  }
-
-  const tokens = extractTokenUsage(response);
-  process.stderr.write(
-    `[debug] Agent total: ${tokens.toLocaleString()} tokens, ${(durationMs / 1000).toFixed(1)}s\n`,
-  );
-}
-
-// ─── Main Query Function ─────────────────────────────────────────────────────
-
-export interface QueryOptions {
-  debug?: boolean;
-}
-
-/**
- * Send a query to the talent agent and get structured results back.
- * Uses the session's conversation history for context (refinement).
+ * Parse the AI SDK UI message stream response.
  *
- * Returns both the result and metadata about the agent call.
+ * The createAgentUIStreamResponse produces a streaming response where each line
+ * is formatted as TYPE_CODE:JSON_DATA. We parse these to extract:
+ * - Text parts (type 0)
+ * - Tool calls (type 9)
+ * - Tool results (type a)
+ * - Finish metadata (type d/e)
  */
-export async function query(
-  input: string,
-  sessionId?: string,
-  options?: QueryOptions,
-): Promise<{ result: AgentResult; meta: AgentMeta }> {
-  const session = getOrCreateSession(sessionId);
+interface ParsedStreamResult {
+  textParts: string[];
+  toolCalls: { toolCallId: string; toolName: string; args: unknown }[];
+  toolResults: { toolCallId: string; toolName: string; result: unknown }[];
+  error: string | null;
+}
 
-  // Add user message to history
-  session.messages.push({ role: "user", content: input });
+async function parseUIMessageStream(
+  response: Response,
+): Promise<ParsedStreamResult> {
+  const result: ParsedStreamResult = {
+    textParts: [],
+    toolCalls: [],
+    toolResults: [],
+    error: null,
+  };
 
-  const startTime = performance.now();
+  if (!response.body) {
+    result.error = "Empty response body";
+    return result;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  // Map from toolCallId to toolName for matching tool results
+  const toolCallIdToName = new Map<string, string>();
 
   try {
-    const response = await talentAgent.generate({
-      options: {},
-      messages: session.messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
-    });
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    const durationMs = Math.round(performance.now() - startTime);
+      buffer += decoder.decode(value, { stream: true });
 
-    if (options?.debug) {
-      printDebugInfo(response, durationMs);
+      // Process complete lines
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? ""; // Keep the last incomplete line in the buffer
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        // AI SDK stream format: TYPE_CODE:JSON_DATA
+        const colonIndex = trimmed.indexOf(":");
+        if (colonIndex === -1) continue;
+
+        const typeCode = trimmed.slice(0, colonIndex);
+        const jsonData = trimmed.slice(colonIndex + 1);
+
+        try {
+          switch (typeCode) {
+            case "0": {
+              // Text delta
+              const text = JSON.parse(jsonData) as string;
+              if (text) result.textParts.push(text);
+              break;
+            }
+            case "9": {
+              // Tool call
+              const toolCall = JSON.parse(jsonData) as {
+                toolCallId: string;
+                toolName: string;
+                args: unknown;
+              };
+              result.toolCalls.push(toolCall);
+              toolCallIdToName.set(toolCall.toolCallId, toolCall.toolName);
+              break;
+            }
+            case "a": {
+              // Tool result
+              const toolResult = JSON.parse(jsonData) as {
+                toolCallId: string;
+                result: unknown;
+              };
+              const toolName =
+                toolCallIdToName.get(toolResult.toolCallId) || "unknown";
+              result.toolResults.push({
+                toolCallId: toolResult.toolCallId,
+                toolName,
+                result: toolResult.result,
+              });
+              break;
+            }
+            case "3": {
+              // Error
+              const errorMsg = JSON.parse(jsonData) as string;
+              result.error = errorMsg;
+              break;
+            }
+            // Type codes d (finish_message), e (finish_step), f (usage) etc. are informational
+            default:
+              // Ignore other type codes
+              break;
+          }
+        } catch {
+          // Skip lines that can't be parsed
+        }
+      }
     }
 
-    const textResponse = extractTextResponse(response);
-    const toolResults = extractToolResults(response);
-    const toolNames = extractToolNames(response);
-    const tokensUsed = extractTokenUsage(response);
-
-    // Store assistant response in history
-    session.messages.push({ role: "assistant", content: textResponse });
-
-    // Extract structured results from tool calls
-    const result = buildResult(session.id, input, textResponse, toolResults);
-    session.lastResult = result;
-
-    const meta: AgentMeta = {
-      durationMs,
-      tokensUsed,
-      toolsCalled: toolNames,
-    };
-
-    return { result, meta };
-  } catch (error) {
-    const durationMs = Math.round(performance.now() - startTime);
-    const friendly = toAIFriendlyError(error);
-
-    const errResult: ErrorResult = {
-      type: "error",
-      session: session.id,
-      error: friendly.message,
-      code: friendly.code,
-    };
-    session.lastResult = errResult;
-
-    return {
-      result: errResult,
-      meta: { durationMs, tokensUsed: 0, toolsCalled: [] },
-    };
+    // Process any remaining buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      const colonIndex = trimmed.indexOf(":");
+      if (colonIndex !== -1) {
+        const typeCode = trimmed.slice(0, colonIndex);
+        const jsonData = trimmed.slice(colonIndex + 1);
+        try {
+          if (typeCode === "0") {
+            const text = JSON.parse(jsonData) as string;
+            if (text) result.textParts.push(text);
+          }
+        } catch {
+          // Ignore
+        }
+      }
+    }
+  } catch (err) {
+    result.error = err instanceof Error ? err.message : String(err);
   }
+
+  return result;
 }
 
 /**
- * Get detail for a profile by index from the last search result in a session.
+ * Call the talent-pro /api/chat endpoint with the given messages.
  */
-export async function getDetail(
-  sessionId: string,
-  profileIndex: number,
-  options?: QueryOptions,
-): Promise<{ result: AgentResult; meta: AgentMeta }> {
-  const session = sessions.get(sessionId);
-  if (!session?.lastResult || session.lastResult.type !== "search") {
-    return {
-      result: {
-        type: "error",
-        session: sessionId,
-        error: "No search results in this session. Run a search first.",
-        code: "SESSION_NOT_FOUND",
-      },
-      meta: { durationMs: 0, tokensUsed: 0, toolsCalled: [] },
-    };
+async function callChatApi(
+  messages: UIMessage[],
+  token: string,
+): Promise<ParsedStreamResult> {
+  const proUrl = getTalentProUrl();
+
+  const response = await fetch(`${proUrl}/api/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ messages }),
+  });
+
+  if (!response.ok) {
+    let errorMessage = `Chat API error: ${response.status}`;
+    try {
+      const body = await response.json();
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // Use default error message
+    }
+    throw new Error(errorMessage);
   }
 
-  const profile = session.lastResult.profiles[profileIndex];
-  if (!profile) {
-    return {
-      result: {
-        type: "error",
-        session: sessionId,
-        error: `Profile index ${profileIndex} out of range. Last search had ${session.lastResult.profiles.length} results.`,
-        code: "INDEX_OUT_OF_RANGE",
-      },
-      meta: { durationMs: 0, tokensUsed: 0, toolsCalled: [] },
-    };
-  }
-
-  // Ask the agent to get profile details
-  return query(
-    `Show me the full profile details for ${profile.displayName || profile.name || profile.id} (ID: ${profile.id})`,
-    sessionId,
-    options,
-  );
+  return parseUIMessageStream(response);
 }
 
-// ─── Result Builder ──────────────────────────────────────────────────────────
+// ─── Result Builder ─────────────────────────────────────────────────────────
 
 export function buildResult(
   sessionId: string,
@@ -487,4 +476,197 @@ export function buildResult(
     summary: textResponse || "No results found.",
     appliedFilters: {},
   };
+}
+
+// ─── Main Query Function ────────────────────────────────────────────────────
+
+export interface QueryOptions {
+  debug?: boolean;
+}
+
+/**
+ * Send a query to the talent agent via the talent-pro /api/chat endpoint.
+ * Uses the session's conversation history for context (refinement).
+ *
+ * Returns both the result and metadata about the call.
+ */
+export async function query(
+  input: string,
+  sessionId?: string,
+  options?: QueryOptions,
+): Promise<{ result: AgentResult; meta: AgentMeta }> {
+  const session = getOrCreateSession(sessionId);
+
+  // Get auth token
+  const token = await getValidToken();
+  if (!token) {
+    return {
+      result: {
+        type: "error",
+        session: session.id,
+        error: "Not authenticated. Run 'talent-cli login' first.",
+        code: "AUTH_ERROR",
+      },
+      meta: { durationMs: 0, tokensUsed: 0, toolsCalled: [] },
+    };
+  }
+
+  // Build the user message in AI SDK UIMessage format
+  const userMessage: UIMessage = {
+    role: "user",
+    parts: [{ type: "text", text: input }],
+  };
+  session.messages.push(userMessage);
+
+  const startTime = performance.now();
+
+  try {
+    const streamResult = await callChatApi(session.messages, token);
+    const durationMs = Math.round(performance.now() - startTime);
+
+    if (streamResult.error) {
+      const errResult: ErrorResult = {
+        type: "error",
+        session: session.id,
+        error: streamResult.error,
+      };
+      session.lastResult = errResult;
+      return {
+        result: errResult,
+        meta: { durationMs, tokensUsed: 0, toolsCalled: [] },
+      };
+    }
+
+    const textResponse = streamResult.textParts.join("");
+    const toolNames = streamResult.toolCalls.map((tc) => tc.toolName);
+
+    if (options?.debug) {
+      for (const tc of streamResult.toolCalls) {
+        process.stderr.write(`[debug] Agent calling: ${tc.toolName}\n`);
+        process.stderr.write(
+          `[debug] Tool input: ${JSON.stringify(tc.args)}\n`,
+        );
+      }
+      process.stderr.write(
+        `[debug] Agent total: ${(durationMs / 1000).toFixed(1)}s\n`,
+      );
+    }
+
+    // Store assistant response in session history
+    const assistantParts: UIMessagePart[] = [];
+    if (textResponse) {
+      assistantParts.push({ type: "text", text: textResponse });
+    }
+    for (const tc of streamResult.toolCalls) {
+      assistantParts.push({
+        type: "tool-call",
+        toolCallId: tc.toolCallId,
+        toolName: tc.toolName,
+        args: tc.args as Record<string, unknown>,
+      });
+    }
+    for (const tr of streamResult.toolResults) {
+      assistantParts.push({
+        type: "tool-result",
+        toolCallId: tr.toolCallId,
+        toolName: tr.toolName,
+        state: "output-available",
+        output: tr.result,
+      });
+    }
+    session.messages.push({
+      role: "assistant",
+      parts: assistantParts,
+    });
+
+    // Build structured result from tool outputs
+    const result = buildResult(
+      session.id,
+      input,
+      textResponse,
+      streamResult.toolResults.map((tr) => ({
+        toolName: tr.toolName,
+        result: tr.result,
+      })),
+    );
+    session.lastResult = result;
+
+    const meta: AgentMeta = {
+      durationMs,
+      tokensUsed: 0, // Not available from streaming response
+      toolsCalled: toolNames,
+    };
+
+    return { result, meta };
+  } catch (error) {
+    const durationMs = Math.round(performance.now() - startTime);
+    const friendly = toAIFriendlyError(error);
+
+    const errResult: ErrorResult = {
+      type: "error",
+      session: session.id,
+      error: friendly.message,
+      code: friendly.code,
+    };
+    session.lastResult = errResult;
+
+    return {
+      result: errResult,
+      meta: { durationMs, tokensUsed: 0, toolsCalled: [] },
+    };
+  }
+}
+
+/**
+ * Get detail for a profile by index from the last search result in a session.
+ */
+export async function getDetail(
+  sessionId: string,
+  profileIndex: number,
+  options?: QueryOptions,
+): Promise<{ result: AgentResult; meta: AgentMeta }> {
+  const session = sessions.get(sessionId);
+  if (!session?.lastResult || session.lastResult.type !== "search") {
+    return {
+      result: {
+        type: "error",
+        session: sessionId,
+        error: "No search results in this session. Run a search first.",
+        code: "SESSION_NOT_FOUND",
+      },
+      meta: { durationMs: 0, tokensUsed: 0, toolsCalled: [] },
+    };
+  }
+
+  const profile = session.lastResult.profiles[profileIndex];
+  if (!profile) {
+    return {
+      result: {
+        type: "error",
+        session: sessionId,
+        error: `Profile index ${profileIndex} out of range. Last search had ${session.lastResult.profiles.length} results.`,
+        code: "INDEX_OUT_OF_RANGE",
+      },
+      meta: { durationMs: 0, tokensUsed: 0, toolsCalled: [] },
+    };
+  }
+
+  // Ask the agent to get profile details
+  return query(
+    `Show me the full profile details for ${profile.displayName || profile.name || profile.id} (ID: ${profile.id})`,
+    sessionId,
+    options,
+  );
+}
+
+/**
+ * Extract tool results from a stream response (for MCP/lib usage).
+ */
+export function extractToolResults(
+  streamResult: ParsedStreamResult,
+): { toolName: string; result: unknown }[] {
+  return streamResult.toolResults.map((tr) => ({
+    toolName: tr.toolName,
+    result: tr.result,
+  }));
 }

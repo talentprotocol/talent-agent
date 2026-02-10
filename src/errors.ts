@@ -18,6 +18,7 @@ export const EXIT_TRANSIENT_ERROR = 4;
 export type ErrorCode =
   | "CONNECTION_ERROR"
   | "AUTH_ERROR"
+  | "LOGIN_REQUIRED"
   | "RATE_LIMIT"
   | "CONTEXT_OVERFLOW"
   | "VALIDATION_ERROR"
@@ -36,12 +37,26 @@ export function toAIFriendlyError(error: unknown): {
   if (msg.includes("ECONNREFUSED"))
     return {
       message:
-        "OpenSearch is not running. Start it or check OPENSEARCH_ENDPOINT.",
+        "Cannot connect to the server. Check TALENT_PRO_URL and TALENT_PROTOCOL_API_URL.",
       code: "CONNECTION_ERROR",
+    };
+  if (
+    msg.includes("Authentication required") ||
+    msg.includes("Not authenticated")
+  )
+    return {
+      message: "Not authenticated. Run 'talent-cli login' first.",
+      code: "AUTH_ERROR",
     };
   if (msg.includes("401") || msg.includes("Unauthorized"))
     return {
-      message: "API key is invalid or expired. Check ANTHROPIC_API_KEY.",
+      message:
+        "Auth token is invalid or expired. Run 'talent-cli login' to re-authenticate.",
+      code: "AUTH_ERROR",
+    };
+  if (msg.includes("403") || msg.includes("Pro organization required"))
+    return {
+      message: "Pro organization required. Your account may not have access.",
       code: "AUTH_ERROR",
     };
   if (msg.includes("rate_limit"))
@@ -76,6 +91,7 @@ export function toAIFriendlyError(error: unknown): {
 export function exitCodeForError(code: ErrorCode): number {
   switch (code) {
     case "AUTH_ERROR":
+    case "LOGIN_REQUIRED":
       return EXIT_AUTH_ERROR;
     case "RATE_LIMIT":
     case "CONNECTION_ERROR":

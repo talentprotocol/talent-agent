@@ -26,21 +26,19 @@ describe("validateEnv", () => {
   });
 
   it("passes when all required env vars are set", () => {
-    process.env.ANTHROPIC_API_KEY = "test-key";
-    process.env.OPENSEARCH_ENDPOINT = "https://localhost:9200";
-    process.env.OPENSEARCH_MASTER_USERNAME = "admin";
-    process.env.OPENSEARCH_MASTER_PASSWORD = "password";
+    process.env.TALENT_PROTOCOL_API_URL = "https://api.talentprotocol.com";
+    process.env.TALENT_PROTOCOL_API_KEY = "test-api-key";
+    process.env.TALENT_PRO_URL = "https://pro.talent.app";
 
     // Should not throw or call process.exit
     expect(() => validateEnv()).not.toThrow();
     expect(mockExit).not.toHaveBeenCalled();
   });
 
-  it("exits with error when ANTHROPIC_API_KEY is missing", () => {
-    process.env.OPENSEARCH_ENDPOINT = "https://localhost:9200";
-    process.env.OPENSEARCH_MASTER_USERNAME = "admin";
-    process.env.OPENSEARCH_MASTER_PASSWORD = "password";
-    delete process.env.ANTHROPIC_API_KEY;
+  it("exits with error when TALENT_PROTOCOL_API_URL is missing", () => {
+    process.env.TALENT_PROTOCOL_API_KEY = "test-api-key";
+    process.env.TALENT_PRO_URL = "https://pro.talent.app";
+    delete process.env.TALENT_PROTOCOL_API_URL;
 
     expect(() => validateEnv()).toThrow("process.exit called");
     expect(mockExit).toHaveBeenCalledWith(1);
@@ -50,40 +48,36 @@ describe("validateEnv", () => {
   });
 
   it("exits with error when multiple env vars are missing", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENSEARCH_ENDPOINT;
-    delete process.env.OPENSEARCH_MASTER_USERNAME;
-    delete process.env.OPENSEARCH_MASTER_PASSWORD;
+    delete process.env.TALENT_PROTOCOL_API_URL;
+    delete process.env.TALENT_PROTOCOL_API_KEY;
+    delete process.env.TALENT_PRO_URL;
 
     expect(() => validateEnv()).toThrow("process.exit called");
     expect(mockExit).toHaveBeenCalledWith(1);
 
     // Should list each missing variable
-    expect(mockConsoleError).toHaveBeenCalledWith("  - ANTHROPIC_API_KEY");
-    expect(mockConsoleError).toHaveBeenCalledWith("  - OPENSEARCH_ENDPOINT");
     expect(mockConsoleError).toHaveBeenCalledWith(
-      "  - OPENSEARCH_MASTER_USERNAME",
+      "  - TALENT_PROTOCOL_API_URL",
     );
     expect(mockConsoleError).toHaveBeenCalledWith(
-      "  - OPENSEARCH_MASTER_PASSWORD",
+      "  - TALENT_PROTOCOL_API_KEY",
     );
+    expect(mockConsoleError).toHaveBeenCalledWith("  - TALENT_PRO_URL");
   });
 
   it("treats empty string as missing", () => {
-    process.env.ANTHROPIC_API_KEY = "";
-    process.env.OPENSEARCH_ENDPOINT = "https://localhost:9200";
-    process.env.OPENSEARCH_MASTER_USERNAME = "admin";
-    process.env.OPENSEARCH_MASTER_PASSWORD = "password";
+    process.env.TALENT_PROTOCOL_API_URL = "";
+    process.env.TALENT_PROTOCOL_API_KEY = "test-api-key";
+    process.env.TALENT_PRO_URL = "https://pro.talent.app";
 
     expect(() => validateEnv()).toThrow("process.exit called");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("includes hint about .env file location", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENSEARCH_ENDPOINT;
-    delete process.env.OPENSEARCH_MASTER_USERNAME;
-    delete process.env.OPENSEARCH_MASTER_PASSWORD;
+    delete process.env.TALENT_PROTOCOL_API_URL;
+    delete process.env.TALENT_PROTOCOL_API_KEY;
+    delete process.env.TALENT_PRO_URL;
 
     expect(() => validateEnv()).toThrow("process.exit called");
 

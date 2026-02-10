@@ -28,8 +28,18 @@ import {
 
 // ─── Argument Parsing (before env loading so --help works without .env) ──────
 
+type AuthMethod = "email" | "google" | "wallet";
+
 interface CliArgs {
-  mode: "interactive" | "single-shot" | "pipe" | "serve" | "session-cmd";
+  mode:
+    | "interactive"
+    | "single-shot"
+    | "pipe"
+    | "serve"
+    | "session-cmd"
+    | "login"
+    | "logout"
+    | "whoami";
   query?: string;
   session?: string;
   detail?: number;
@@ -40,6 +50,7 @@ interface CliArgs {
   sessionCmd?:
     | { action: "save"; id: string; path: string }
     | { action: "load"; path: string };
+  loginMethod?: AuthMethod;
 }
 
 function getVersion(): string {
@@ -65,7 +76,26 @@ function parseArgs(): CliArgs {
   let i = 0;
   const positional: string[] = [];
 
-  // Check for session subcommand
+  // Check for subcommands
+  if (args[0] === "login") {
+    result.mode = "login";
+    // Check for --email, --google, --wallet flags
+    if (args[1] === "--email") result.loginMethod = "email";
+    else if (args[1] === "--google") result.loginMethod = "google";
+    else if (args[1] === "--wallet") result.loginMethod = "wallet";
+    return result;
+  }
+
+  if (args[0] === "logout") {
+    result.mode = "logout";
+    return result;
+  }
+
+  if (args[0] === "whoami") {
+    result.mode = "whoami";
+    return result;
+  }
+
   if (args[0] === "session") {
     const subAction = args[1];
     if (subAction === "save" && args[2] && args[3]) {
@@ -158,7 +188,15 @@ Talent Search CLI - Search for talent profiles using natural language
 USAGE:
   talent-cli [OPTIONS] [QUERY]
 
-EXAMPLES:
+AUTHENTICATION:
+  talent-cli login                                  # Interactive login (choose method)
+  talent-cli login --email                          # Login with email (magic code)
+  talent-cli login --google                         # Login with Google
+  talent-cli login --wallet                         # Login with wallet (SIWE)
+  talent-cli logout                                 # Clear stored credentials
+  talent-cli whoami                                 # Show current auth status
+
+SEARCH:
   talent-cli "Find React developers in Berlin"
   talent-cli --json "Find senior Python engineers"
   talent-cli --session abc123 "Only show those from Google"
@@ -180,10 +218,11 @@ OPTIONS:
   --serve                 Start as MCP server (stdio transport)
 
 ENVIRONMENT VARIABLES:
-  TALENT_CLI_SESSION      Default session ID (fallback for --session)
-  ANTHROPIC_API_KEY       Anthropic API key for the AI agent
-  OPENSEARCH_ENDPOINT     OpenSearch endpoint URL
-  NO_COLOR                Disable colored output
+  TALENT_PROTOCOL_API_URL  Talent Protocol API base URL
+  TALENT_PROTOCOL_API_KEY  API key for the Talent Protocol API
+  TALENT_PRO_URL           Talent Pro app URL (for agent API)
+  TALENT_CLI_SESSION       Default session ID (fallback for --session)
+  NO_COLOR                 Disable colored output
 
 INTERACTIVE MODE:
   Default when no query is provided. Shows a two-column TUI with
@@ -225,9 +264,10 @@ function printHelpJson(): void {
       "--version",
     ],
     envVars: [
+      "TALENT_PROTOCOL_API_URL",
+      "TALENT_PROTOCOL_API_KEY",
+      "TALENT_PRO_URL",
       "TALENT_CLI_SESSION",
-      "ANTHROPIC_API_KEY",
-      "OPENSEARCH_ENDPOINT",
       "NO_COLOR",
     ],
   };
@@ -256,7 +296,52 @@ if (cliArgs.help) {
 // Load and validate env after --help/--version check (so they work without .env)
 loadEnv();
 
-// Session commands don't need full env validation
+// ─── Auth Commands (need env but not full validation) ─────────────────────
+
+if (cliArgs.mode === "login") {
+  validateEnv();
+  const { runInteractiveLogin } = await import("./auth/flows");
+  try {
+    await runInteractiveLogin(cliArgs.loginMethod);
+    process.exit(EXIT_SUCCESS);
+  } catch (error) {
+    console.error(
+      `Login failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(EXIT_AUTH_ERROR);
+  }
+}
+
+if (cliArgs.mode === "logout") {
+  const { clearCredentials } = await import("./auth/store");
+  clearCredentials();
+  console.log("Logged out. Credentials cleared.");
+  process.exit(EXIT_SUCCESS);
+}
+
+if (cliArgs.mode === "whoami") {
+  const { loadCredentials, isTokenExpired } = await import("./auth/store");
+  const creds = loadCredentials();
+  if (!creds) {
+    console.log("Not authenticated. Run 'talent-cli login' to sign in.");
+    process.exit(EXIT_SUCCESS);
+  }
+  const expired = isTokenExpired(creds.expiresAt);
+  const expiresDate = new Date(
+    creds.expiresAt > 1_000_000_000_000
+      ? creds.expiresAt
+      : creds.expiresAt * 1000,
+  );
+  console.log(`Auth method: ${creds.authMethod}`);
+  if (creds.email) console.log(`Email:       ${creds.email}`);
+  if (creds.address) console.log(`Address:     ${creds.address}`);
+  console.log(`Token:       ${expired ? "EXPIRED" : "valid"}`);
+  console.log(`Expires:     ${expiresDate.toLocaleString()}`);
+  process.exit(EXIT_SUCCESS);
+}
+
+// ─── Session Commands ─────────────────────────────────────────────────────
+
 if (cliArgs.mode === "session-cmd") {
   const { saveSession, loadSession } = await import("./agent");
   const cmd = cliArgs.sessionCmd!;
@@ -276,6 +361,8 @@ if (cliArgs.mode === "session-cmd") {
     process.exit(EXIT_APP_ERROR);
   }
 }
+
+// ─── Main Modes (require full env + auth) ─────────────────────────────────
 
 validateEnv();
 

@@ -3,10 +3,10 @@
  *
  * Used by both single-shot mode (stdout) and the TUI results panel.
  */
-import type { DetailedProfile } from "../../talent-apps/apps/talent-pro/app/lib/services/tools/get-profile-details";
 import type {
   AgentResult,
   DetailResult,
+  DetailedProfile,
   ProfileSummary,
   SearchResult,
 } from "./agent";

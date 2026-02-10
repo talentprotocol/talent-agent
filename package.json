@@ -30,8 +30,6 @@
     "src/**/*.ts": "prettier --write"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.36",
-    "@ai-sdk/devtools": "^0.0.8",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@opentui/core": "latest",
     "ai": "^6.0.50",

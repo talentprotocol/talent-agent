@@ -126,80 +126,68 @@ describe("buildResult", () => {
 });
 
 describe("extractToolResults", () => {
-  it("extracts tool results from response steps", () => {
-    const mockResponse = {
-      steps: [
+  it("extracts tool results from ParsedStreamResult", () => {
+    const streamResult = {
+      textParts: ["Found results."],
+      toolCalls: [
         {
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: "tc-1",
-              toolName: "searchProfiles",
-              input: { query: "React devs" },
-            },
-          ],
-        },
-        {
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: "tc-1",
-              output: { profiles: [], totalMatches: 0 },
-            },
-          ],
+          toolCallId: "tc-1",
+          toolName: "searchProfiles",
+          args: { query: "React devs" },
         },
       ],
+      toolResults: [
+        {
+          toolCallId: "tc-1",
+          toolName: "searchProfiles",
+          result: { profiles: [], totalMatches: 0 },
+        },
+      ],
+      error: null,
     };
 
-    const results = extractToolResults(mockResponse as any);
+    const results = extractToolResults(streamResult as any);
 
     expect(results).toHaveLength(1);
     expect(results[0]!.toolName).toBe("searchProfiles");
     expect(results[0]!.result).toEqual({ profiles: [], totalMatches: 0 });
   });
 
-  it("returns empty array when no steps", () => {
-    const results = extractToolResults({} as any);
+  it("returns empty array when no tool results", () => {
+    const streamResult = {
+      textParts: [],
+      toolCalls: [],
+      toolResults: [],
+      error: null,
+    };
+
+    const results = extractToolResults(streamResult as any);
     expect(results).toHaveLength(0);
   });
 
-  it("handles multiple tool calls", () => {
-    const mockResponse = {
-      steps: [
+  it("handles multiple tool results", () => {
+    const streamResult = {
+      textParts: [],
+      toolCalls: [
+        { toolCallId: "tc-1", toolName: "searchProfiles", args: {} },
+        { toolCallId: "tc-2", toolName: "getProfileDetails", args: {} },
+      ],
+      toolResults: [
         {
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: "tc-1",
-              toolName: "searchProfiles",
-              input: {},
-            },
-            {
-              type: "tool-call",
-              toolCallId: "tc-2",
-              toolName: "getProfileDetails",
-              input: {},
-            },
-          ],
+          toolCallId: "tc-1",
+          toolName: "searchProfiles",
+          result: { profiles: [] },
         },
         {
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: "tc-1",
-              output: { profiles: [] },
-            },
-            {
-              type: "tool-result",
-              toolCallId: "tc-2",
-              output: { success: true, profile: {} },
-            },
-          ],
+          toolCallId: "tc-2",
+          toolName: "getProfileDetails",
+          result: { success: true, profile: {} },
         },
       ],
+      error: null,
     };
 
-    const results = extractToolResults(mockResponse as any);
+    const results = extractToolResults(streamResult as any);
 
     expect(results).toHaveLength(2);
     expect(results[0]!.toolName).toBe("searchProfiles");

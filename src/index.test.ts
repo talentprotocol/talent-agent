@@ -94,7 +94,7 @@ describe("CLI --help --json", () => {
     expect(parsed.modes.serve).toBeDefined();
     expect(parsed.flags).toContain("--json");
     expect(parsed.flags).toContain("--session");
-    expect(parsed.envVars).toContain("ANTHROPIC_API_KEY");
+    expect(parsed.envVars).toContain("TALENT_PROTOCOL_API_URL");
     expect(exitCode).toBe(0);
   });
 });

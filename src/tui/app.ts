@@ -19,6 +19,8 @@ import {
   InputRenderable,
   InputRenderableEvents,
   type KeyEvent,
+  SelectRenderable,
+  SelectRenderableEvents,
   TextRenderable,
   bold,
   createCliRenderer,
@@ -33,6 +35,8 @@ import {
   getDetail as rawGetDetail,
   query as rawQuery,
 } from "../agent";
+import { runInteractiveLogin } from "../auth/flows";
+import { getValidToken } from "../auth/store";
 import { createResultsPanel } from "./results";
 import {
   type SearchHistoryEntry,
@@ -55,6 +59,31 @@ async function getDetail(
 }
 
 export async function runTUI(): Promise<void> {
+  // ─── Auth Check ──────────────────────────────────────────────────────────
+
+  const token = await getValidToken();
+  if (!token) {
+    console.log("You are not authenticated.\n");
+    try {
+      await runInteractiveLogin();
+    } catch (error) {
+      console.error(
+        `Login failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      process.exit(1);
+    }
+
+    // Verify auth succeeded
+    const newToken = await getValidToken();
+    if (!newToken) {
+      console.error("Authentication required. Run 'talent-cli login' first.");
+      process.exit(1);
+    }
+    console.log(""); // blank line before TUI
+  }
+
+  // ─── Initialize TUI ─────────────────────────────────────────────────────
+
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
   });

@@ -190,7 +190,7 @@ describe("runSingleShot", () => {
 
       const output = JSON.parse(mockConsoleLog.mock.calls[0]![0]);
       expect(output.success).toBe(false);
-      expect(output.error).toContain("OpenSearch");
+      expect(output.error).toContain("Cannot connect");
       expect(output.code).toBe("CONNECTION_ERROR");
     });
   });
