@@ -105,72 +105,80 @@ vi.mock("@opentui/core", () => {
   };
 });
 
-// Mock the sidebar and results panel sub-modules
-vi.mock("./sidebar", () => {
-  let selectedIdx = 0;
-  const mockEntries: any[] = [];
-
-  return {
-    createSidebar: vi.fn((_renderer: any, _state: any, _callbacks: any) => ({
-      container: {
-        id: "sidebar",
-        add: vi.fn(),
-        remove: vi.fn(),
-        getChildren: vi.fn(() => []),
-        borderColor: "#444444",
-      },
-      update: vi.fn(),
-      moveUp: vi.fn(() => {
-        selectedIdx = Math.max(0, selectedIdx - 1);
-      }),
-      moveDown: vi.fn(() => {
-        selectedIdx = Math.min(mockEntries.length - 1, selectedIdx + 1);
-      }),
-      select: vi.fn(),
-      getState: vi.fn(() => ({
-        entries: mockEntries,
-        selectedIndex: selectedIdx,
-      })),
-    })),
-  };
-});
-
-vi.mock("./results", () => {
-  let currentState: any = { result: null, loading: false };
-
-  return {
-    createResultsPanel: vi.fn((_renderer: any) => ({
-      container: {
-        id: "results",
-        add: vi.fn(),
-        remove: vi.fn(),
-        getChildren: vi.fn(() => []),
-      },
-      update: vi.fn((newState: any) => {
-        Object.assign(currentState, newState);
-      }),
-      getState: vi.fn(() => currentState),
-    })),
-  };
-});
+// Use vi.spyOn instead of vi.mock for ./sidebar and ./results to avoid
+// cross-file contamination (vi.mock leaks across files in Bun 1.x).
+let sidebarSpy: ReturnType<typeof vi.spyOn> | undefined;
+let resultsSpy: ReturnType<typeof vi.spyOn> | undefined;
 
 describe("runTUI", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     keyHandlers.length = 0;
     inputHandlers.clear();
     inputValue = "";
+
+    // Spy on sidebar and results sub-modules (prevents contaminating their test files)
+    let selectedIdx = 0;
+    const mockEntries: any[] = [];
+
+    const sidebarModule = await import("./sidebar");
+    sidebarSpy = vi.spyOn(sidebarModule, "createSidebar").mockImplementation(
+      (_renderer: any, _state: any, _callbacks: any) =>
+        ({
+          container: {
+            id: "sidebar",
+            add: vi.fn(),
+            remove: vi.fn(),
+            getChildren: vi.fn(() => []),
+            borderColor: "#444444",
+          },
+          update: vi.fn(),
+          moveUp: vi.fn(() => {
+            selectedIdx = Math.max(0, selectedIdx - 1);
+          }),
+          moveDown: vi.fn(() => {
+            selectedIdx = Math.min(mockEntries.length - 1, selectedIdx + 1);
+          }),
+          select: vi.fn(),
+          getState: vi.fn(() => ({
+            entries: mockEntries,
+            selectedIndex: selectedIdx,
+          })),
+        }) as any,
+    );
+
+    let currentState: any = { result: null, loading: false };
+    const resultsModule = await import("./results");
+    resultsSpy = vi
+      .spyOn(resultsModule, "createResultsPanel")
+      .mockImplementation(
+        (_renderer: any) =>
+          ({
+            container: {
+              id: "results",
+              add: vi.fn(),
+              remove: vi.fn(),
+              getChildren: vi.fn(() => []),
+            },
+            update: vi.fn((newState: any) => {
+              Object.assign(currentState, newState);
+            }),
+            getState: vi.fn(() => currentState),
+          }) as any,
+      );
   });
 
   afterEach(() => {
+    sidebarSpy?.mockRestore();
+    resultsSpy?.mockRestore();
     vi.restoreAllMocks();
   });
 
   it("initializes the TUI without throwing", async () => {
     const { runTUI } = await import("./app");
 
-    // runTUI should complete without errors
-    await expect(runTUI()).resolves.not.toThrow();
+    // runTUI should complete without errors — if it throws, the test fails
+    await runTUI();
   });
 
   it("registers keyboard handlers", async () => {

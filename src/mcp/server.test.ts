@@ -68,7 +68,7 @@ describe("startMcpServer", () => {
 
     const handler = searchCall![3]; // 4th argument is the handler
 
-    vi.mocked(query).mockResolvedValue({
+    (query as any).mockResolvedValue({
       result: {
         type: "search",
         session: "s1",
@@ -105,7 +105,7 @@ describe("startMcpServer", () => {
     );
     const handler = searchCall![3];
 
-    vi.mocked(query).mockResolvedValue({
+    (query as any).mockResolvedValue({
       result: {
         type: "search",
         session: "my-session",
@@ -134,7 +134,7 @@ describe("startMcpServer", () => {
 
     const handler = detailCall![3];
 
-    vi.mocked(getDetail).mockResolvedValue({
+    (getDetail as any).mockResolvedValue({
       result: {
         type: "detail",
         session: "s1",
@@ -169,7 +169,7 @@ describe("startMcpServer", () => {
 
     const handler = refineCall![3];
 
-    vi.mocked(query).mockResolvedValue({
+    (query as any).mockResolvedValue({
       result: {
         type: "search",
         session: "s1",

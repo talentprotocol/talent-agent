@@ -19,10 +19,6 @@ src/
   format.ts                   # Terminal formatters (ANSI) for human-readable output
   env.ts                      # Environment variable loading and validation
   lib.ts                      # Programmatic TS/JS API (TalentSearch class)
-  preload.ts                  # Bun preload: mocks Next.js/React modules for CLI context
-  test-setup.ts               # Vitest setup: mocks Next.js modules for test environment
-  __mocks__/
-    server-only.ts            # Stub for the server-only package (used by vitest alias)
   programmatic/
     single-shot.ts            # Single-shot mode: query -> formatted or JSON output
     piped.ts                  # Pipe mode: JSONL stdin -> JSONL stdout with Zod validation
@@ -79,17 +75,11 @@ bun run typecheck                       # Type checking
 bun run format                          # Format code
 ```
 
-## Dependencies
-
-This project depends on a sibling `talent-apps` monorepo at `../../talent-apps/`. The `preload.ts` module mocks Next.js-specific modules (`server-only`, `next/cache`, `react`, `@talent/ui/utils/auth`) so the talent agent can run outside of a Next.js runtime.
-
 ## Testing
 
 Tests use [vitest](https://vitest.dev/) and live alongside source files as `*.test.ts`. The test infrastructure includes:
 
-- **`src/test-setup.ts`**: Vitest setup file (configured in `vitest.config.ts`) that mocks Next.js-only modules and sets required env vars (e.g. `NEXTAUTH_SECRET`) so the talent-apps dependency chain can load in tests.
-- **`src/__mocks__/server-only.ts`**: Stub module aliased via `vitest.config.ts` to replace the `server-only` package at import resolution time.
-- **External dependencies** (e.g. `talentAgent`, `@opentui/core`, `@modelcontextprotocol/sdk`) are mocked per-test using `vi.mock()`.
+- **External dependencies** (e.g. `@opentui/core`, `@modelcontextprotocol/sdk`) are mocked per-test using `vi.mock()`.
 - **CLI behavior** is tested via subprocess execution (`execFileSync("bun", ...)`) in `index.test.ts`.
 
 ## Exit Codes
@@ -104,11 +94,8 @@ Tests use [vitest](https://vitest.dev/) and live alongside source files as `*.te
 
 ## Environment Variables
 
-| Variable                     | Required | Description                        |
-| ---------------------------- | -------- | ---------------------------------- |
-| `ANTHROPIC_API_KEY`          | Yes      | Anthropic API key for Claude       |
-| `OPENSEARCH_ENDPOINT`        | Yes      | OpenSearch cluster URL             |
-| `OPENSEARCH_MASTER_USERNAME` | Yes      | OpenSearch username                |
-| `OPENSEARCH_MASTER_PASSWORD` | Yes      | OpenSearch password                |
-| `TALENT_CLI_SESSION`         | No       | Default session ID                 |
-| `NO_COLOR`                   | No       | Disable ANSI color output          |
+| Variable             | Required | Description                                            |
+| -------------------- | -------- | ------------------------------------------------------ |
+| `TALENT_PRO_URL`     | No       | Talent Pro app URL (default: `https://pro.talent.app`) |
+| `TALENT_CLI_SESSION` | No       | Default session ID                                     |
+| `NO_COLOR`           | No       | Disable ANSI color output                              |

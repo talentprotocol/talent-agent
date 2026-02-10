@@ -20,18 +20,11 @@ import {
   saveSession,
 } from "./agent";
 
-// Mock the auth store so query() gets a valid token
-vi.mock("./auth/store", () => ({
-  getValidToken: vi.fn().mockResolvedValue("mock-token"),
-}));
-
-// Mock the errors module to avoid dependency issues
-vi.mock("./errors", () => ({
-  toAIFriendlyError: vi.fn((err: unknown) => ({
-    message: err instanceof Error ? err.message : String(err),
-    code: "UNKNOWN",
-  })),
-}));
+// Use vi.spyOn instead of vi.mock to avoid cross-file mock contamination.
+// vi.mock leaks across test files in Bun 1.x and mock.restore() does not clear it.
+// vi.spyOn + mockRestore properly cleans up after each test.
+let getValidTokenSpy: ReturnType<typeof vi.spyOn> | undefined;
+let toAIFriendlyErrorSpy: ReturnType<typeof vi.spyOn> | undefined;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -83,12 +76,31 @@ function mockFetchResponse(body: string, status = 200): Response {
 
 const originalEnv = { ...process.env };
 
-beforeEach(() => {
+beforeEach(async () => {
   process.env.TALENT_PRO_URL = "http://localhost:3000";
+
+  // Spy on auth store and errors modules (ESM live bindings propagate to ./agent)
+  const store = await import("./auth/store");
+  const errors = await import("./errors");
+
+  getValidTokenSpy = vi
+    .spyOn(store, "getValidToken")
+    .mockResolvedValue("mock-token" as any);
+  toAIFriendlyErrorSpy = vi
+    .spyOn(errors, "toAIFriendlyError")
+    .mockImplementation(
+      (err: unknown) =>
+        ({
+          message: err instanceof Error ? err.message : String(err),
+          code: "UNKNOWN",
+        }) as any,
+    );
 });
 
 afterEach(() => {
   process.env = { ...originalEnv };
+  getValidTokenSpy?.mockRestore();
+  toAIFriendlyErrorSpy?.mockRestore();
   vi.restoreAllMocks();
 });
 
@@ -308,7 +320,7 @@ describe("query", () => {
 
   it("returns error result when not authenticated", async () => {
     const { getValidToken } = await import("./auth/store");
-    vi.mocked(getValidToken).mockResolvedValueOnce(null);
+    (getValidToken as any).mockResolvedValueOnce(null);
 
     const result = await query("Find devs");
 

@@ -94,7 +94,9 @@ describe("CLI --help --json", () => {
     expect(parsed.modes.serve).toBeDefined();
     expect(parsed.flags).toContain("--json");
     expect(parsed.flags).toContain("--session");
-    expect(parsed.envVars).toContain("TALENT_PROTOCOL_API_URL");
+    expect(parsed.envVars).toContain("TALENT_PRO_URL");
+    expect(parsed.envVars).not.toContain("TALENT_PROTOCOL_API_URL");
+    expect(parsed.envVars).not.toContain("TALENT_PROTOCOL_API_KEY");
     expect(exitCode).toBe(0);
   });
 });

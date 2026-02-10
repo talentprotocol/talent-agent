@@ -39,7 +39,7 @@ describe("TalentSearch", () => {
         toolsCalled: ["searchProfiles"],
       };
 
-      vi.mocked(mockQuery).mockResolvedValue({
+      (mockQuery as any).mockResolvedValue({
         result: mockResult,
         meta: mockMeta,
       });
@@ -54,7 +54,7 @@ describe("TalentSearch", () => {
     });
 
     it("passes session and debug options", async () => {
-      vi.mocked(mockQuery).mockResolvedValue({
+      (mockQuery as any).mockResolvedValue({
         result: {
           type: "search",
           session: "sess-1",
@@ -75,7 +75,7 @@ describe("TalentSearch", () => {
     });
 
     it("throws when result is an error", async () => {
-      vi.mocked(mockQuery).mockResolvedValue({
+      (mockQuery as any).mockResolvedValue({
         result: {
           type: "error",
           session: "sess-1",
@@ -90,7 +90,7 @@ describe("TalentSearch", () => {
     });
 
     it("throws when result is detail type (unexpected)", async () => {
-      vi.mocked(mockQuery).mockResolvedValue({
+      (mockQuery as any).mockResolvedValue({
         result: {
           type: "detail",
           session: "sess-1",
@@ -124,7 +124,7 @@ describe("TalentSearch", () => {
         toolsCalled: ["getProfileDetails"],
       };
 
-      vi.mocked(mockGetDetail).mockResolvedValue({
+      (mockGetDetail as any).mockResolvedValue({
         result: mockResult,
         meta: mockMeta,
       });
@@ -139,7 +139,7 @@ describe("TalentSearch", () => {
     });
 
     it("passes debug option", async () => {
-      vi.mocked(mockGetDetail).mockResolvedValue({
+      (mockGetDetail as any).mockResolvedValue({
         result: {
           type: "detail",
           session: "sess-1",
@@ -155,7 +155,7 @@ describe("TalentSearch", () => {
     });
 
     it("throws when result is an error", async () => {
-      vi.mocked(mockGetDetail).mockResolvedValue({
+      (mockGetDetail as any).mockResolvedValue({
         result: {
           type: "error",
           session: "sess-1",
@@ -171,7 +171,7 @@ describe("TalentSearch", () => {
     });
 
     it("throws when result is search type (unexpected)", async () => {
-      vi.mocked(mockGetDetail).mockResolvedValue({
+      (mockGetDetail as any).mockResolvedValue({
         result: {
           type: "search",
           session: "sess-1",
@@ -207,7 +207,7 @@ describe("TalentSearch", () => {
         toolsCalled: ["searchProfiles"],
       };
 
-      vi.mocked(mockQuery).mockResolvedValue({
+      (mockQuery as any).mockResolvedValue({
         result: mockResult,
         meta: mockMeta,
       });
@@ -222,7 +222,7 @@ describe("TalentSearch", () => {
     });
 
     it("throws when result is an error", async () => {
-      vi.mocked(mockQuery).mockResolvedValue({
+      (mockQuery as any).mockResolvedValue({
         result: {
           type: "error",
           session: "sess-1",
@@ -237,7 +237,7 @@ describe("TalentSearch", () => {
     });
 
     it("throws when result is detail type (unexpected)", async () => {
-      vi.mocked(mockQuery).mockResolvedValue({
+      (mockQuery as any).mockResolvedValue({
         result: {
           type: "detail",
           session: "sess-1",
@@ -253,7 +253,7 @@ describe("TalentSearch", () => {
     });
 
     it("passes debug option", async () => {
-      vi.mocked(mockQuery).mockResolvedValue({
+      (mockQuery as any).mockResolvedValue({
         result: {
           type: "search",
           session: "sess-1",

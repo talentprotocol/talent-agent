@@ -218,9 +218,7 @@ OPTIONS:
   --serve                 Start as MCP server (stdio transport)
 
 ENVIRONMENT VARIABLES:
-  TALENT_PROTOCOL_API_URL  Talent Protocol API base URL
-  TALENT_PROTOCOL_API_KEY  API key for the Talent Protocol API
-  TALENT_PRO_URL           Talent Pro app URL (for agent API)
+  TALENT_PRO_URL           Talent Pro app URL (auth + agent API)
   TALENT_CLI_SESSION       Default session ID (fallback for --session)
   NO_COLOR                 Disable colored output
 
@@ -263,13 +261,7 @@ function printHelpJson(): void {
       "--help",
       "--version",
     ],
-    envVars: [
-      "TALENT_PROTOCOL_API_URL",
-      "TALENT_PROTOCOL_API_KEY",
-      "TALENT_PRO_URL",
-      "TALENT_CLI_SESSION",
-      "NO_COLOR",
-    ],
+    envVars: ["TALENT_PRO_URL", "TALENT_CLI_SESSION", "NO_COLOR"],
   };
   console.log(JSON.stringify(schema, null, 2));
 }

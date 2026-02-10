@@ -16,15 +16,15 @@ import {
 import { runEmailFlow, runInteractiveLogin, runWalletFlow } from "./flows";
 import { saveCredentials } from "./store";
 
-// Mock readline for prompts
+// Mock node:readline — vi.mock works with ESM (vi.spyOn does not)
 const mockQuestion = vi.fn();
 const mockClose = vi.fn();
 
 vi.mock("node:readline", () => ({
-  createInterface: vi.fn(() => ({
+  createInterface: () => ({
     question: mockQuestion,
     close: mockClose,
-  })),
+  }),
 }));
 
 // Mock auth client
@@ -42,12 +42,10 @@ vi.mock("./client", () => ({
   }),
 }));
 
-// Mock credential store
 vi.mock("./store", () => ({
   saveCredentials: vi.fn(),
 }));
 
-// Mock google-server (avoid starting real server in tests)
 vi.mock("./google-server", () => ({
   startGoogleOAuthFlow: vi.fn().mockResolvedValue("mock-google-id-token"),
 }));

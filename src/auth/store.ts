@@ -40,8 +40,14 @@ export interface StoredCredentials {
 
 const KEYCHAIN_SERVICE = "talent-agent";
 const KEYCHAIN_ACCOUNT = "default";
-const CONFIG_DIR = join(homedir(), ".talent-agent");
-const CREDENTIALS_FILE = join(CONFIG_DIR, "credentials.json");
+
+// Computed lazily so tests can mock homedir() per-test without vi.resetModules()
+function getConfigDir(): string {
+  return join(homedir(), ".talent-agent");
+}
+function getCredentialsFile(): string {
+  return join(getConfigDir(), "credentials.json");
+}
 
 // ─── Keychain Backend (macOS) ───────────────────────────────────────────────
 
@@ -121,15 +127,18 @@ function keychainDelete(): boolean {
 // ─── File Backend ───────────────────────────────────────────────────────────
 
 function ensureConfigDir(): void {
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+  if (!existsSync(getConfigDir())) {
+    mkdirSync(getConfigDir(), { recursive: true, mode: 0o700 });
   }
 }
 
 function fileWrite(data: string): boolean {
   try {
     ensureConfigDir();
-    writeFileSync(CREDENTIALS_FILE, data, { encoding: "utf-8", mode: 0o600 });
+    writeFileSync(getCredentialsFile(), data, {
+      encoding: "utf-8",
+      mode: 0o600,
+    });
     return true;
   } catch {
     return false;
@@ -138,8 +147,8 @@ function fileWrite(data: string): boolean {
 
 function fileRead(): string | null {
   try {
-    if (!existsSync(CREDENTIALS_FILE)) return null;
-    return readFileSync(CREDENTIALS_FILE, "utf-8");
+    if (!existsSync(getCredentialsFile())) return null;
+    return readFileSync(getCredentialsFile(), "utf-8");
   } catch {
     return null;
   }
@@ -147,8 +156,8 @@ function fileRead(): string | null {
 
 function fileDelete(): boolean {
   try {
-    if (existsSync(CREDENTIALS_FILE)) {
-      unlinkSync(CREDENTIALS_FILE);
+    if (existsSync(getCredentialsFile())) {
+      unlinkSync(getCredentialsFile());
     }
     return true;
   } catch {
@@ -158,7 +167,26 @@ function fileDelete(): boolean {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-const useKeychain = isKeychainAvailable();
+// Lazy-evaluated so tests can mock process.platform before the first call.
+let _keychainChecked = false;
+let _keychainAvailable = false;
+
+function shouldUseKeychain(): boolean {
+  if (!_keychainChecked) {
+    _keychainAvailable = isKeychainAvailable();
+    _keychainChecked = true;
+  }
+  return _keychainAvailable;
+}
+
+/**
+ * Reset the keychain availability check (for testing only).
+ * Call this before mocking process.platform to force re-evaluation.
+ */
+export function _resetKeychainCheck(): void {
+  _keychainChecked = false;
+  _keychainAvailable = false;
+}
 
 /**
  * Save credentials to the store (Keychain preferred, file fallback).
@@ -166,7 +194,7 @@ const useKeychain = isKeychainAvailable();
 export function saveCredentials(creds: StoredCredentials): void {
   const data = JSON.stringify(creds);
 
-  if (useKeychain) {
+  if (shouldUseKeychain()) {
     if (keychainWrite(data)) return;
     // Keychain write failed — fall through to file
   }
@@ -183,7 +211,7 @@ export function saveCredentials(creds: StoredCredentials): void {
 export function loadCredentials(): StoredCredentials | null {
   let raw: string | null = null;
 
-  if (useKeychain) {
+  if (shouldUseKeychain()) {
     raw = keychainRead();
   }
 
@@ -204,7 +232,7 @@ export function loadCredentials(): StoredCredentials | null {
  * Clear all stored credentials (both Keychain and file).
  */
 export function clearCredentials(): void {
-  if (useKeychain) keychainDelete();
+  if (shouldUseKeychain()) keychainDelete();
   fileDelete();
 }
 

@@ -3,23 +3,25 @@
  *
  * Tests the sidebar's state management, navigation, and selection logic
  * by mocking the @opentui/core renderer.
+ *
+ * Uses vi.resetModules() + dynamic import to avoid stale module mocks
+ * from other test files (e.g. app.test.ts) leaking into this file.
+ * Mock assertions use instance methods directly (sidebar.container.add)
+ * rather than shared module-level vi.fn() refs, which avoids Bun's
+ * vi.mock hoisting issues with const/let variables.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SidebarState } from "./sidebar";
 import { createSidebar } from "./sidebar";
 
-// Mock @opentui/core with proper class constructors
-const mockAdd = vi.fn();
-const mockRemove = vi.fn();
-const mockGetChildren = vi.fn(() => []);
-
+// Mock @opentui/core — each instance gets its own vi.fn() methods
 vi.mock("@opentui/core", () => {
   class BoxRenderable {
     id: string;
-    add = mockAdd;
-    remove = mockRemove;
-    getChildren = mockGetChildren;
+    add = vi.fn();
+    remove = vi.fn();
+    getChildren = vi.fn(() => []);
     borderColor: string;
     constructor(_renderer: any, opts: any) {
       this.id = opts.id;
@@ -51,10 +53,8 @@ describe("createSidebar", () => {
   const mockRenderer = {} as any;
   let state: SidebarState;
   let onSelectMock: ReturnType<typeof vi.fn>;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetChildren.mockReturnValue([]);
     onSelectMock = vi.fn();
     state = {
       entries: [],
@@ -76,10 +76,12 @@ describe("createSidebar", () => {
   });
 
   it("renders empty state message when no entries", () => {
-    createSidebar(mockRenderer, state, { onSelect: onSelectMock });
+    const sidebar = createSidebar(mockRenderer, state, {
+      onSelect: onSelectMock,
+    });
 
-    // Should have rendered empty state text
-    expect(mockAdd).toHaveBeenCalled();
+    // Should have rendered empty state text via container.add
+    expect(sidebar.container.add).toHaveBeenCalled();
   });
 
   it("returns state reference", () => {
@@ -276,8 +278,7 @@ describe("createSidebar", () => {
       });
 
       // Clear mock calls from initial render
-      mockAdd.mockClear();
-      mockRemove.mockClear();
+      (sidebar.container.add as any).mockClear();
 
       // Add an entry and update
       state.entries.push({
@@ -290,7 +291,7 @@ describe("createSidebar", () => {
       sidebar.update();
 
       // Should have re-rendered (add was called again)
-      expect(mockAdd).toHaveBeenCalled();
+      expect(sidebar.container.add).toHaveBeenCalled();
     });
   });
 });
