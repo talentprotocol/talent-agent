@@ -8,12 +8,13 @@ import { createInterface } from "node:readline";
 
 import {
   createAuthToken,
+  createCliSession,
   createNonce,
   emailRequestCode,
   emailVerifyCode,
-  googleSignIn,
+  getCliAuthUrl,
+  pollCliSession,
 } from "./client";
-import { startGoogleOAuthFlow } from "./google-server";
 import {
   type AuthMethod,
   type StoredCredentials,
@@ -78,24 +79,66 @@ export async function runEmailFlow(): Promise<StoredCredentials> {
 
 // ─── Google Auth Flow ───────────────────────────────────────────────────────
 
+const POLL_INTERVAL_MS = 2_000;
+const POLL_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
+
+function openBrowser(url: string): void {
+  const command =
+    process.platform === "darwin"
+      ? "open"
+      : process.platform === "win32"
+        ? "start"
+        : "xdg-open";
+
+  try {
+    Bun.spawn([command, url], { stdout: "ignore", stderr: "ignore" });
+  } catch {
+    // If browser open fails, the user will see the URL printed to stderr
+    printToStderr(`\nOpen this URL in your browser:\n${url}\n`);
+  }
+}
+
 export async function runGoogleFlow(): Promise<StoredCredentials> {
   printToStderr("Starting Google authentication...");
+
+  // 1. Create a CLI auth session on the server
+  const { sessionId } = await createCliSession();
+
+  // 2. Open the browser to the CLI login page on talent-pro
+  const authUrl = `${getCliAuthUrl()}/auth/cli?session_id=${sessionId}`;
   printToStderr("A browser window will open for you to sign in with Google.");
+  openBrowser(authUrl);
+  printToStderr(`\nIf the browser didn't open, visit:\n${authUrl}\n`);
+  printToStderr("Waiting for authentication...");
 
-  const idToken = await startGoogleOAuthFlow();
+  // 3. Poll for the result
+  const startTime = Date.now();
 
-  printToStderr("Exchanging token with Talent API...");
-  const response = await googleSignIn(idToken);
+  while (Date.now() - startTime < POLL_TIMEOUT_MS) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 
-  const creds: StoredCredentials = {
-    token: response.auth.token,
-    expiresAt: response.auth.expires_at,
-    authMethod: "google",
-  };
+    const result = await pollCliSession(sessionId);
 
-  saveCredentials(creds);
-  printToStderr("Authenticated with Google");
-  return creds;
+    if (result.status === "complete" && result.auth) {
+      const creds: StoredCredentials = {
+        token: result.auth.token,
+        expiresAt: result.auth.expires_at,
+        authMethod: "google",
+      };
+
+      saveCredentials(creds);
+      printToStderr("Authenticated with Google");
+      return creds;
+    }
+
+    if (result.status === "expired") {
+      throw new Error("Authentication session expired. Please try again.");
+    }
+
+    // status === "pending" — keep polling
+  }
+
+  throw new Error("Google authentication timed out after 5 minutes.");
 }
 
 // ─── Wallet (SIWE) Auth Flow ────────────────────────────────────────────────

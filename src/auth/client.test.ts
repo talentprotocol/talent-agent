@@ -12,10 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createAuthToken,
+  createCliSession,
   createNonce,
   emailRequestCode,
   emailVerifyCode,
-  googleSignIn,
+  getCliAuthUrl,
+  pollCliSession,
   refreshAuthToken,
 } from "./client";
 
@@ -127,34 +129,83 @@ describe("emailVerifyCode", () => {
   });
 });
 
-describe("googleSignIn", () => {
-  it("sends id_token and returns auth token", async () => {
-    const tokenResponse = {
+describe("createCliSession", () => {
+  it("creates a session and returns sessionId", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ sessionId: "abc123" }), { status: 200 }),
+      );
+
+    const result = await createCliSession();
+
+    expect(result.sessionId).toBe("abc123");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pro.talent.app/api/auth/cli/sessions",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("throws on failure", async () => {
+    mockFetchError(500, { error: "Internal server error" });
+
+    await expect(createCliSession()).rejects.toThrow("Internal server error");
+  });
+});
+
+describe("pollCliSession", () => {
+  it("returns pending status", async () => {
+    mockFetchOk({ status: "pending" });
+
+    const result = await pollCliSession("session-123");
+
+    expect(result.status).toBe("pending");
+  });
+
+  it("returns complete status with auth data", async () => {
+    const response = {
+      status: "complete",
       auth: { token: "google-jwt", expires_at: 1700000000 },
     };
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(
-        new Response(JSON.stringify(tokenResponse), { status: 200 }),
+        new Response(JSON.stringify(response), { status: 200 }),
       );
 
-    const result = await googleSignIn("google-id-token");
+    const result = await pollCliSession("session-123");
 
-    expect(result.auth.token).toBe("google-jwt");
+    expect(result.status).toBe("complete");
+    expect(result.auth?.token).toBe("google-jwt");
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://pro.talent.app/api/auth/google",
-      expect.objectContaining({
-        body: JSON.stringify({ id_token: "google-id-token" }),
-      }),
+      "https://pro.talent.app/api/auth/cli/sessions/session-123",
+      expect.objectContaining({ method: "GET" }),
     );
   });
 
-  it("throws on failure", async () => {
-    mockFetchError(401, { error: "Invalid Google token" });
+  it("returns expired status", async () => {
+    mockFetchOk({ status: "expired" });
 
-    await expect(googleSignIn("bad-token")).rejects.toThrow(
-      "Invalid Google token",
-    );
+    const result = await pollCliSession("session-123");
+
+    expect(result.status).toBe("expired");
+  });
+
+  it("throws on failure", async () => {
+    mockFetchError(500, { error: "Server error" });
+
+    await expect(pollCliSession("session-123")).rejects.toThrow("Server error");
+  });
+});
+
+describe("getCliAuthUrl", () => {
+  it("returns the talent-pro base URL", () => {
+    expect(getCliAuthUrl()).toBe("https://pro.talent.app");
+  });
+
+  it("strips trailing slash", () => {
+    process.env.TALENT_PRO_URL = "https://pro.talent.app/";
+    expect(getCliAuthUrl()).toBe("https://pro.talent.app");
   });
 });
 
