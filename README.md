@@ -16,12 +16,6 @@ cd talent-agent
 bun install
 ```
 
-Create a `.env` file in the project root:
-
-```env
-TALENT_PRO_URL=https://pro.talent.app
-```
-
 ### Authentication
 
 ```bash
@@ -145,25 +139,6 @@ talent-agent --json --session "$SESSION" "Only show those in Berlin"
 # Detail
 talent-agent --json --session "$SESSION" --detail 0
 ```
-
-### Session Persistence
-
-```bash
-talent-agent session save abc123 ./search.json
-talent-agent session load ./search.json
-talent-agent --session abc123 "Only seniors"
-```
-
-### Environment Variable
-
-Set `TALENT_CLI_SESSION` to use a session without passing `--session`:
-
-```bash
-export TALENT_CLI_SESSION=abc123
-talent-agent "Only show seniors"
-```
-
-The `--session` flag takes precedence over the environment variable.
 
 ## Agent Mode
 
