@@ -60,7 +60,10 @@ async function handleErrorResponse(
 ): Promise<never> {
   let errorMessage = fallbackMessage;
   try {
-    const body = await response.json();
+    const body = (await response.json()) as {
+      error?: string;
+      message?: string;
+    };
     if (body.error) errorMessage = body.error;
     else if (body.message) errorMessage = body.message;
   } catch {
@@ -90,7 +93,7 @@ export async function emailRequestCode(
     await handleErrorResponse(response, "Failed to request email code");
   }
 
-  return response.json();
+  return response.json() as Promise<EmailRequestCodeResponse>;
 }
 
 /**
@@ -111,7 +114,7 @@ export async function emailVerifyCode(
     await handleErrorResponse(response, "Failed to verify email code");
   }
 
-  return response.json();
+  return response.json() as Promise<AuthTokenResponse>;
 }
 
 /**
@@ -131,7 +134,7 @@ export async function googleSignIn(
     await handleErrorResponse(response, "Failed to sign in with Google");
   }
 
-  return response.json();
+  return response.json() as Promise<AuthTokenResponse>;
 }
 
 /**
@@ -151,7 +154,7 @@ export async function createNonce(
     await handleErrorResponse(response, "Failed to create nonce");
   }
 
-  return response.json();
+  return response.json() as Promise<CreateNonceResponse>;
 }
 
 /**
@@ -179,7 +182,7 @@ export async function createAuthToken(
     await handleErrorResponse(response, "Failed to create auth token");
   }
 
-  return response.json();
+  return response.json() as Promise<AuthTokenResponse>;
 }
 
 /**
@@ -199,5 +202,5 @@ export async function refreshAuthToken(
     await handleErrorResponse(response, "Failed to refresh auth token");
   }
 
-  return response.json();
+  return response.json() as Promise<AuthTokenResponse>;
 }

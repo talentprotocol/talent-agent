@@ -383,7 +383,7 @@ async function callChatApi(
   if (!response.ok) {
     let errorMessage = `Chat API error: ${response.status}`;
     try {
-      const body = await response.json();
+      const body = (await response.json()) as { error?: string };
       if (body.error) errorMessage = body.error;
     } catch {
       // Use default error message
