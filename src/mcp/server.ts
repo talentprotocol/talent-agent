@@ -1,7 +1,7 @@
 /**
- * MCP (Model Context Protocol) server for talent-cli.
+ * MCP (Model Context Protocol) server for talent-agent.
  *
- * Exposes talent-cli as an MCP server over stdio transport, making it
+ * Exposes talent-agent as an MCP server over stdio transport, making it
  * natively usable by Claude, Cursor, Gemini CLI, GitHub Copilot, etc.
  *
  * Tools:
@@ -17,7 +17,7 @@ import { getDetail, query } from "../agent";
 
 export async function startMcpServer(): Promise<void> {
   const server = new McpServer({
-    name: "talent-cli",
+    name: "talent-agent",
     version: "1.0.0",
   });
 

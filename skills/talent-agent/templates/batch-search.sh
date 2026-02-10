@@ -5,7 +5,7 @@
 #   chmod +x batch-search.sh
 #   ./batch-search.sh
 #
-# This script demonstrates how to use talent-cli in pipe mode
+# This script demonstrates how to use talent-agent in pipe mode
 # to run multiple searches and collect results into a single file.
 
 set -euo pipefail
@@ -27,7 +27,7 @@ echo "Running ${#SEARCHES[@]} searches..."
 for i in "${!SEARCHES[@]}"; do
   query="${SEARCHES[$i]}"
   echo "[$((i + 1))/${#SEARCHES[@]}] Searching: $query"
-  talent-cli --json "$query" > "$OUTPUT_DIR/search-$i.json" 2>/dev/null
+  talent-agent --json "$query" > "$OUTPUT_DIR/search-$i.json" 2>/dev/null
   echo "  -> Saved to $OUTPUT_DIR/search-$i.json"
 done
 
@@ -41,7 +41,7 @@ for i in "${!SEARCHES[@]}"; do
   PIPE_INPUT+=$(printf '{"action":"search","id":"req-%d","query":"%s"}\n' "$i" "${SEARCHES[$i]}")
 done
 
-echo "$PIPE_INPUT" | talent-cli --pipe > "$OUTPUT_DIR/all-results.jsonl"
+echo "$PIPE_INPUT" | talent-agent --pipe > "$OUTPUT_DIR/all-results.jsonl"
 echo "All results saved to $OUTPUT_DIR/all-results.jsonl"
 
 # Method 3: Search + Refine workflow
@@ -49,11 +49,11 @@ echo ""
 echo "--- Method 3: Search + Refine workflow ---"
 echo ""
 
-RESULT=$(talent-cli --json "Find React developers")
+RESULT=$(talent-agent --json "Find React developers")
 SESSION=$(echo "$RESULT" | jq -r '.data.session')
 echo "Initial search session: $SESSION"
 
-REFINED=$(talent-cli --json --session "$SESSION" "Only show those in Berlin with 5+ years experience")
+REFINED=$(talent-agent --json --session "$SESSION" "Only show those in Berlin with 5+ years experience")
 echo "Refined results:"
 echo "$REFINED" | jq '.data.profiles | length' | xargs -I{} echo "  Found {} profiles"
 

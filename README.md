@@ -1,4 +1,4 @@
-# talent-cli
+# talent-agent
 
 AI-powered talent profile search using natural language. CLI tool with interactive TUI, JSON output, pipe mode, and MCP server.
 
@@ -12,8 +12,8 @@ AI-powered talent profile search using natural language. CLI tool with interacti
 ### Setup
 
 ```bash
-git clone <repo-url> talent-cli
-cd talent-cli
+git clone <repo-url> talent-agent
+cd talent-agent
 bun install
 ```
 
@@ -28,37 +28,37 @@ TALENT_PRO_URL=https://...
 ### Authentication
 
 ```bash
-talent-cli login              # Interactive (choose method)
-talent-cli login --email      # Email magic code
-talent-cli login --google     # Google OAuth
-talent-cli login --wallet     # Wallet (SIWE)
-talent-cli whoami             # Check auth status
-talent-cli logout             # Clear credentials
+talent-agent login              # Interactive (choose method)
+talent-agent login --email      # Email magic code
+talent-agent login --google     # Google OAuth
+talent-agent login --wallet     # Wallet (SIWE)
+talent-agent whoami             # Check auth status
+talent-agent logout             # Clear credentials
 ```
 
 ## Quick Start
 
 ```bash
 # Search for profiles
-talent-cli "Find React developers in Berlin"
+talent-agent "Find React developers in Berlin"
 
 # JSON output (auto-enabled when piping stdout)
-talent-cli --json "Find senior Python engineers"
+talent-agent --json "Find senior Python engineers"
 
 # Refine a previous search
-talent-cli --session abc123 "Only show those with 5+ years"
+talent-agent --session abc123 "Only show those with 5+ years"
 
 # Get detailed profile by index
-talent-cli --session abc123 --detail 0
+talent-agent --session abc123 --detail 0
 
 # Interactive TUI (default when no query)
-talent-cli
+talent-agent
 
 # Pipe mode (JSONL in, JSONL out)
-echo '{"action":"search","query":"Find Rust devs"}' | talent-cli --pipe
+echo '{"action":"search","query":"Find Rust devs"}' | talent-agent --pipe
 
 # MCP server mode
-talent-cli --serve
+talent-agent --serve
 ```
 
 ## Modes
@@ -68,8 +68,8 @@ talent-cli --serve
 Run a query, get results, exit. Pass `--json` for machine-readable output wrapped in a success/error envelope.
 
 ```bash
-talent-cli "Find full-stack engineers in London"
-talent-cli --json "Find ML engineers" | jq '.data.profiles[].displayName'
+talent-agent "Find full-stack engineers in London"
+talent-agent --json "Find ML engineers" | jq '.data.profiles[].displayName'
 ```
 
 ### Interactive TUI
@@ -91,11 +91,11 @@ Read JSONL from stdin, write JSONL to stdout. Designed for agent-to-agent commun
 
 ```bash
 # New format (Zod-validated)
-echo '{"action":"search","id":"req-1","query":"Find React devs"}' | talent-cli --pipe
-echo '{"action":"detail","id":"req-2","session":"abc","index":0}' | talent-cli --pipe
+echo '{"action":"search","id":"req-1","query":"Find React devs"}' | talent-agent --pipe
+echo '{"action":"detail","id":"req-2","session":"abc","index":0}' | talent-agent --pipe
 
 # Legacy format (still supported)
-echo '{"query":"Find React devs"}' | talent-cli --pipe
+echo '{"query":"Find React devs"}' | talent-agent --pipe
 ```
 
 Each response is a JSON envelope with request ID correlation:
@@ -106,10 +106,10 @@ Each response is a JSON envelope with request ID correlation:
 
 ### MCP Server
 
-Expose talent-cli as a [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio, making it natively usable by Claude, Cursor, Gemini CLI, GitHub Copilot, and other MCP-compatible clients.
+Expose talent-agent as a [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio, making it natively usable by Claude, Cursor, Gemini CLI, GitHub Copilot, and other MCP-compatible clients.
 
 ```bash
-talent-cli --serve
+talent-agent --serve
 ```
 
 Tools exposed: `talent_search`, `talent_detail`, `talent_refine`.
@@ -130,7 +130,7 @@ Tools exposed: `talent_search`, `talent_detail`, `talent_refine`.
 Combine `--help` and `--json` to get a structured capabilities schema for agent self-discovery:
 
 ```bash
-talent-cli --help --json
+talent-agent --help --json
 ```
 
 ## Sessions
@@ -139,22 +139,22 @@ Sessions maintain conversation history for multi-turn refinement.
 
 ```bash
 # Initial search
-RESULT=$(talent-cli --json "Find Python developers")
+RESULT=$(talent-agent --json "Find Python developers")
 SESSION=$(echo "$RESULT" | jq -r '.data.session')
 
 # Refine
-talent-cli --json --session "$SESSION" "Only show those in Berlin"
+talent-agent --json --session "$SESSION" "Only show those in Berlin"
 
 # Detail
-talent-cli --json --session "$SESSION" --detail 0
+talent-agent --json --session "$SESSION" --detail 0
 ```
 
 ### Session Persistence
 
 ```bash
-talent-cli session save abc123 ./search.json
-talent-cli session load ./search.json
-talent-cli --session abc123 "Only seniors"
+talent-agent session save abc123 ./search.json
+talent-agent session load ./search.json
+talent-agent --session abc123 "Only seniors"
 ```
 
 ### Environment Variable
@@ -163,7 +163,7 @@ Set `TALENT_CLI_SESSION` to use a session without passing `--session`:
 
 ```bash
 export TALENT_CLI_SESSION=abc123
-talent-cli "Only show seniors"
+talent-agent "Only show seniors"
 ```
 
 The `--session` flag takes precedence over the environment variable.
@@ -199,7 +199,7 @@ All `--json` and `--pipe` output uses a standardized envelope:
 Add `--debug` to see agent internals on stderr (does not pollute JSON on stdout):
 
 ```bash
-talent-cli --debug --json "Find React devs" 2>debug.log
+talent-agent --debug --json "Find React devs" 2>debug.log
 ```
 
 ```
@@ -234,10 +234,10 @@ talent-cli --debug --json "Find React devs" 2>debug.log
 
 ## Programmatic API
 
-Import `talent-cli` as a library in your TypeScript/JavaScript project:
+Import `talent-agent` as a library in your TypeScript/JavaScript project:
 
 ```typescript
-import { TalentSearch } from "talent-cli";
+import { TalentSearch } from "talent-agent";
 
 const ts = new TalentSearch();
 
@@ -261,9 +261,9 @@ Add to your Cursor MCP settings:
 ```json
 {
   "mcpServers": {
-    "talent-cli": {
+    "talent-agent": {
       "command": "bun",
-      "args": ["run", "/path/to/talent-cli/src/index.ts", "--serve"]
+      "args": ["run", "/path/to/talent-agent/src/index.ts", "--serve"]
     }
   }
 }
@@ -276,9 +276,9 @@ Add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "talent-cli": {
+    "talent-agent": {
       "command": "bun",
-      "args": ["run", "/path/to/talent-cli/src/index.ts", "--serve"]
+      "args": ["run", "/path/to/talent-agent/src/index.ts", "--serve"]
     }
   }
 }

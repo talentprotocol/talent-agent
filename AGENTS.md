@@ -2,7 +2,7 @@
 
 ## Project Description
 
-`talent-cli` is a standalone command-line tool for searching talent profiles using natural language, powered by the Talent Agent (an AI agent that wraps OpenSearch). It operates in three primary modes plus an MCP server mode:
+`talent-agent` is a standalone command-line tool for searching talent profiles using natural language, powered by the Talent Agent (an AI agent that wraps OpenSearch). It operates in three primary modes plus an MCP server mode:
 
 1. **Single-shot mode**: Run a query from the command line, get results, exit.
 2. **Pipe mode**: Read JSONL from stdin, write JSONL to stdout (for agent-to-agent communication).
@@ -35,7 +35,7 @@ src/
 scripts/
   check-version.js            # Print package version (for CI)
 skills/
-  talent-cli/                 # Agent skill documentation
+  talent-agent/                 # Agent skill documentation
 ```
 
 ## Code Style

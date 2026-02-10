@@ -84,7 +84,7 @@ describe("CLI --help --json", () => {
     const { stdout, exitCode } = runCli(["--help", "--json"]);
 
     const parsed = JSON.parse(stdout);
-    expect(parsed.name).toBe("talent-cli");
+    expect(parsed.name).toBe("talent-agent");
     expect(parsed.version).toBeDefined();
     expect(parsed.modes).toBeDefined();
     expect(parsed.modes.search).toBeDefined();
@@ -112,21 +112,21 @@ describe("CLI session subcommand validation", () => {
   it("exits with code 2 for invalid session subcommand", () => {
     const { stderr, exitCode } = runCli(["session"]);
 
-    expect(stderr).toContain("Usage: talent-cli session");
+    expect(stderr).toContain("Usage: talent-agent session");
     expect(exitCode).toBe(2);
   });
 
   it("exits with code 2 for session save without enough args", () => {
     const { stderr, exitCode } = runCli(["session", "save"]);
 
-    expect(stderr).toContain("Usage: talent-cli session");
+    expect(stderr).toContain("Usage: talent-agent session");
     expect(exitCode).toBe(2);
   });
 
   it("exits with code 2 for session load without path", () => {
     const { stderr, exitCode } = runCli(["session", "load"]);
 
-    expect(stderr).toContain("Usage: talent-cli session");
+    expect(stderr).toContain("Usage: talent-agent session");
     expect(exitCode).toBe(2);
   });
 });

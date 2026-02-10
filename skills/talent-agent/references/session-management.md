@@ -2,7 +2,7 @@
 
 ## Overview
 
-Sessions in talent-cli maintain conversation history between the user and the AI agent. This enables multi-turn interactions like refining search results, asking follow-up questions, and getting profile details.
+Sessions in talent-agent maintain conversation history between the user and the AI agent. This enables multi-turn interactions like refining search results, asking follow-up questions, and getting profile details.
 
 ## How Sessions Work
 
@@ -29,15 +29,15 @@ Sessions in talent-cli maintain conversation history between the user and the AI
 
 ```bash
 # Initial broad search
-talent-cli --json "Find developers"
+talent-agent --json "Find developers"
 # Response: session = "abc123", 150 matches
 
 # Narrow by technology
-talent-cli --json --session abc123 "Only React developers"
+talent-agent --json --session abc123 "Only React developers"
 # Response: 42 matches
 
 # Narrow further by location
-talent-cli --json --session abc123 "In Berlin only"
+talent-agent --json --session abc123 "In Berlin only"
 # Response: 8 matches
 ```
 
@@ -45,7 +45,7 @@ talent-cli --json --session abc123 "In Berlin only"
 
 ```bash
 # Switch from technology to seniority filter
-talent-cli --json --session abc123 "Show only seniors with 5+ years"
+talent-agent --json --session abc123 "Show only seniors with 5+ years"
 ```
 
 ## Session Persistence
@@ -54,13 +54,13 @@ Sessions can be saved to and loaded from JSON files:
 
 ```bash
 # Save a session
-talent-cli session save abc123 ./my-search.json
+talent-agent session save abc123 ./my-search.json
 
 # Load a session (restores messages and last result)
-talent-cli session load ./my-search.json
+talent-agent session load ./my-search.json
 
 # Continue the loaded session
-talent-cli --session abc123 "Show more details"
+talent-agent --session abc123 "Show more details"
 ```
 
 ### Serialized Session Format
@@ -89,7 +89,7 @@ Set `TALENT_CLI_SESSION` to automatically use a session without passing `--sessi
 
 ```bash
 export TALENT_CLI_SESSION=abc123
-talent-cli "Only show seniors"  # Uses abc123 session
+talent-agent "Only show seniors"  # Uses abc123 session
 ```
 
 The `--session` flag takes precedence over the environment variable.
@@ -107,7 +107,7 @@ Sessions are stored in-memory using a `Map<string, Session>`. This means:
 ## API Usage
 
 ```typescript
-import { TalentSearch } from "talent-cli";
+import { TalentSearch } from "talent-agent";
 
 const ts = new TalentSearch();
 

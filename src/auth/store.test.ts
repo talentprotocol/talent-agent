@@ -35,7 +35,7 @@ vi.mock("./client", () => ({
 }));
 
 beforeEach(() => {
-  tempHome = mkdtempSync(join(tmpdir(), "talent-cli-store-test-"));
+  tempHome = mkdtempSync(join(tmpdir(), "talent-agent-store-test-"));
   vi.resetModules();
 });
 
@@ -106,10 +106,10 @@ describe("saveCredentials / loadCredentials round-trip", () => {
     expect(loaded!.email).toBe("user@example.com");
   });
 
-  it("creates the .talent-cli directory if it doesn't exist", async () => {
+  it("creates the .talent-agent directory if it doesn't exist", async () => {
     const { saveCredentials } = await importStore();
 
-    const configDir = join(tempHome, ".talent-cli");
+    const configDir = join(tempHome, ".talent-agent");
     expect(existsSync(configDir)).toBe(false);
 
     saveCredentials({
@@ -130,7 +130,7 @@ describe("saveCredentials / loadCredentials round-trip", () => {
       authMethod: "google",
     });
 
-    const credFile = join(tempHome, ".talent-cli", "credentials.json");
+    const credFile = join(tempHome, ".talent-agent", "credentials.json");
     expect(existsSync(credFile)).toBe(true);
 
     const content = readFileSync(credFile, "utf-8");
@@ -173,7 +173,7 @@ describe("loadCredentials edge cases", () => {
     const { mkdirSync, writeFileSync } = await import("node:fs");
     const { loadCredentials } = await importStore();
 
-    const configDir = join(tempHome, ".talent-cli");
+    const configDir = join(tempHome, ".talent-agent");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, "credentials.json"), "not json", "utf-8");
 

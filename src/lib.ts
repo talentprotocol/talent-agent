@@ -1,11 +1,11 @@
 /**
- * Programmatic TypeScript/JavaScript API for talent-cli.
+ * Programmatic TypeScript/JavaScript API for talent-agent.
  *
  * Provides a clean class-based interface for searching talent profiles
  * without going through the CLI argument parser.
  *
  * Usage:
- *   import { TalentSearch } from "talent-cli";
+ *   import { TalentSearch } from "talent-agent";
  *   const ts = new TalentSearch();
  *   const result = await ts.search("Find React developers in Berlin");
  */

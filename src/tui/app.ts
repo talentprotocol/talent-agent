@@ -76,7 +76,7 @@ export async function runTUI(): Promise<void> {
     // Verify auth succeeded
     const newToken = await getValidToken();
     if (!newToken) {
-      console.error("Authentication required. Run 'talent-cli login' first.");
+      console.error("Authentication required. Run 'talent-agent login' first.");
       process.exit(1);
     }
     console.log(""); // blank line before TUI

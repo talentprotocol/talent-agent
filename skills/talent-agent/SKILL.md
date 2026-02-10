@@ -1,5 +1,5 @@
 ---
-name: talent-cli
+name: talent-agent
 description: Search for talent profiles using natural language via the Talent CLI tool
 ---
 
@@ -7,7 +7,7 @@ description: Search for talent profiles using natural language via the Talent CL
 
 ## Overview
 
-`talent-cli` is a command-line tool that searches talent profiles using natural language queries. It wraps an AI agent connected to OpenSearch.
+`talent-agent` is a command-line tool that searches talent profiles using natural language queries. It wraps an AI agent connected to OpenSearch.
 
 ## Core Workflow
 
@@ -21,16 +21,16 @@ description: Search for talent profiles using natural language via the Talent CL
 
 ```bash
 # Basic search
-talent-cli "Find React developers in Berlin"
+talent-agent "Find React developers in Berlin"
 
 # JSON output
-talent-cli --json "Find senior Python engineers"
+talent-agent --json "Find senior Python engineers"
 
 # Refine previous search
-talent-cli --session <id> "Only show those with 5+ years"
+talent-agent --session <id> "Only show those with 5+ years"
 
 # Get profile detail
-talent-cli --session <id> --detail 0
+talent-agent --session <id> --detail 0
 ```
 
 ### Pipe Mode (JSONL)
@@ -38,7 +38,7 @@ talent-cli --session <id> --detail 0
 Send JSON objects to stdin, receive JSON envelopes on stdout:
 
 ```bash
-echo '{"action":"search","query":"Find Rust developers","id":"req-1"}' | talent-cli --pipe
+echo '{"action":"search","query":"Find Rust developers","id":"req-1"}' | talent-agent --pipe
 ```
 
 Input schema (new format):
@@ -56,7 +56,7 @@ Legacy input format (still supported):
 ### MCP Server
 
 ```bash
-talent-cli --serve
+talent-agent --serve
 ```
 
 Exposes three tools: `talent_search`, `talent_detail`, `talent_refine`.
@@ -64,7 +64,7 @@ Exposes three tools: `talent_search`, `talent_detail`, `talent_refine`.
 ### Programmatic API
 
 ```typescript
-import { TalentSearch } from "talent-cli";
+import { TalentSearch } from "talent-agent";
 
 const ts = new TalentSearch();
 const { result, meta } = await ts.search("Find React developers in Berlin");
@@ -83,11 +83,11 @@ const detail = await ts.detail(result.session, 0);
 
 ```bash
 # Initial search -> get session ID
-RESULT=$(talent-cli --json "Find Python developers")
+RESULT=$(talent-agent --json "Find Python developers")
 SESSION=$(echo "$RESULT" | jq -r '.data.session')
 
 # Refine with the session
-talent-cli --json --session "$SESSION" "Only show those in Berlin"
+talent-agent --json --session "$SESSION" "Only show those in Berlin"
 ```
 
 ### Debug Mode
@@ -95,14 +95,14 @@ talent-cli --json --session "$SESSION" "Only show those in Berlin"
 Add `--debug` (or `-D`) to see agent internals on stderr:
 
 ```bash
-talent-cli --debug --json "Find React devs" 2>debug.log
+talent-agent --debug --json "Find React devs" 2>debug.log
 ```
 
 ### Environment Variable Session
 
 ```bash
 export TALENT_CLI_SESSION=abc123
-talent-cli "Only show seniors"  # Uses abc123 session automatically
+talent-agent "Only show seniors"  # Uses abc123 session automatically
 ```
 
 ## Response Envelope

@@ -6,7 +6,7 @@
  * 1. **Preferred: macOS Keychain** — tokens encrypted at rest, unlocked by
  *    OS login session. Uses the `security` CLI tool with no extra dependencies.
  *
- * 2. **Fallback: `~/.talent-cli/credentials.json`** — used when Keychain is
+ * 2. **Fallback: `~/.talent-agent/credentials.json`** — used when Keychain is
  *    unavailable (Linux, CI, non-interactive). File written with 0o600 perms.
  *
  * The store auto-detects: try Keychain first; if the `security` command fails
@@ -38,9 +38,9 @@ export interface StoredCredentials {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const KEYCHAIN_SERVICE = "talent-cli";
+const KEYCHAIN_SERVICE = "talent-agent";
 const KEYCHAIN_ACCOUNT = "default";
-const CONFIG_DIR = join(homedir(), ".talent-cli");
+const CONFIG_DIR = join(homedir(), ".talent-agent");
 const CREDENTIALS_FILE = join(CONFIG_DIR, "credentials.json");
 
 // ─── Keychain Backend (macOS) ───────────────────────────────────────────────

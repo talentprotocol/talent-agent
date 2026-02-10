@@ -5,15 +5,15 @@
  * A search engine for talent profiles powered by the Talent Agent.
  *
  * Usage:
- *   talent-cli "Find React developers in Berlin"        # Single-shot search
- *   talent-cli --json "Find senior Python engineers"     # JSON output
- *   talent-cli --session abc "Only show seniors"         # Refine previous search
- *   talent-cli --session abc --detail 0                  # Detail on 1st result
- *   talent-cli                                           # Interactive TUI
- *   echo '{"query":"..."}' | talent-cli --pipe           # JSONL piped mode
- *   talent-cli --serve                                   # MCP server mode
- *   talent-cli session save <id> <path>                  # Save session to file
- *   talent-cli session load <path>                       # Load session from file
+ *   talent-agent "Find React developers in Berlin"        # Single-shot search
+ *   talent-agent --json "Find senior Python engineers"     # JSON output
+ *   talent-agent --session abc "Only show seniors"         # Refine previous search
+ *   talent-agent --session abc --detail 0                  # Detail on 1st result
+ *   talent-agent                                           # Interactive TUI
+ *   echo '{"query":"..."}' | talent-agent --pipe           # JSONL piped mode
+ *   talent-agent --serve                                   # MCP server mode
+ *   talent-agent session save <id> <path>                  # Save session to file
+ *   talent-agent session load <path>                       # Load session from file
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -107,8 +107,8 @@ function parseArgs(): CliArgs {
       result.sessionCmd = { action: "load", path: args[2] };
       return result;
     } else {
-      console.error("Usage: talent-cli session save <id> <path>");
-      console.error("       talent-cli session load <path>");
+      console.error("Usage: talent-agent session save <id> <path>");
+      console.error("       talent-agent session load <path>");
       process.exit(EXIT_USAGE_ERROR);
     }
   }
@@ -186,26 +186,26 @@ function printHelp(): void {
 Talent Search CLI - Search for talent profiles using natural language
 
 USAGE:
-  talent-cli [OPTIONS] [QUERY]
+  talent-agent [OPTIONS] [QUERY]
 
 AUTHENTICATION:
-  talent-cli login                                  # Interactive login (choose method)
-  talent-cli login --email                          # Login with email (magic code)
-  talent-cli login --google                         # Login with Google
-  talent-cli login --wallet                         # Login with wallet (SIWE)
-  talent-cli logout                                 # Clear stored credentials
-  talent-cli whoami                                 # Show current auth status
+  talent-agent login                                  # Interactive login (choose method)
+  talent-agent login --email                          # Login with email (magic code)
+  talent-agent login --google                         # Login with Google
+  talent-agent login --wallet                         # Login with wallet (SIWE)
+  talent-agent logout                                 # Clear stored credentials
+  talent-agent whoami                                 # Show current auth status
 
 SEARCH:
-  talent-cli "Find React developers in Berlin"
-  talent-cli --json "Find senior Python engineers"
-  talent-cli --session abc123 "Only show those from Google"
-  talent-cli --session abc123 --detail 0
-  talent-cli                                        # Interactive TUI
-  echo '{"query":"Find Rust devs"}' | talent-cli --pipe
-  talent-cli --serve                                # MCP server mode
-  talent-cli session save abc123 ./search.json      # Save session
-  talent-cli session load ./search.json             # Load session
+  talent-agent "Find React developers in Berlin"
+  talent-agent --json "Find senior Python engineers"
+  talent-agent --session abc123 "Only show those from Google"
+  talent-agent --session abc123 --detail 0
+  talent-agent                                        # Interactive TUI
+  echo '{"query":"Find Rust devs"}' | talent-agent --pipe
+  talent-agent --serve                                # MCP server mode
+  talent-agent session save abc123 ./search.json      # Save session
+  talent-agent session load ./search.json             # Load session
 
 OPTIONS:
   -h, --help              Show this help message
@@ -241,17 +241,17 @@ INTERACTIVE MODE:
 function printHelpJson(): void {
   const version = getVersion();
   const schema = {
-    name: "talent-cli",
+    name: "talent-agent",
     version,
     modes: {
-      search: { usage: "talent-cli [--json] [--session <id>] <query>" },
-      detail: { usage: "talent-cli --session <id> --detail <index>" },
+      search: { usage: "talent-agent [--json] [--session <id>] <query>" },
+      detail: { usage: "talent-agent --session <id> --detail <index>" },
       pipe: {
-        usage: "talent-cli --pipe",
+        usage: "talent-agent --pipe",
         inputSchema: "JSONL: {action, query?, session?, id?, index?}",
       },
-      interactive: { usage: "talent-cli" },
-      serve: { usage: "talent-cli --serve" },
+      interactive: { usage: "talent-agent" },
+      serve: { usage: "talent-agent --serve" },
     },
     flags: [
       "--json",
@@ -323,7 +323,7 @@ if (cliArgs.mode === "whoami") {
   const { loadCredentials, isTokenExpired } = await import("./auth/store");
   const creds = loadCredentials();
   if (!creds) {
-    console.log("Not authenticated. Run 'talent-cli login' to sign in.");
+    console.log("Not authenticated. Run 'talent-agent login' to sign in.");
     process.exit(EXIT_SUCCESS);
   }
   const expired = isTokenExpired(creds.expiresAt);

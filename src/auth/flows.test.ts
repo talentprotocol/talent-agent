@@ -128,7 +128,7 @@ describe("runWalletFlow", () => {
       validAddress,
       "0xmysignature",
       1,
-      expect.stringContaining("talent-cli wants you to sign in"),
+      expect.stringContaining("talent-agent wants you to sign in"),
     );
     expect(saveCredentials).toHaveBeenCalledWith({
       token: "wallet-jwt",
