@@ -2,94 +2,110 @@
  * Unit tests for credential storage.
  *
  * Tests the file-based storage backend (Keychain is not available in
- * Vitest's Node.js environment) and the getValidToken / isTokenExpired logic.
+ * Bun's test environment) and the getValidToken / isTokenExpired logic.
  *
- * We mock `node:os` homedir to redirect file operations to a temp directory,
- * and use vi.resetModules() before each test so the module-level CONFIG_DIR
- * constant is recomputed with the fresh temp directory.
+ * We mock `node:os` homedir to redirect file operations to a temp directory.
+ * store.ts computes paths lazily via getConfigDir()/getCredentialsFile(), so
+ * each call picks up the current tempHome value without vi.resetModules().
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { refreshAuthToken } from "./client";
+// Static imports — store.ts lazily computes config paths via homedir()
+import {
+  _resetKeychainCheck,
+  clearCredentials,
+  getValidToken,
+  isTokenExpired,
+  loadCredentials,
+  saveCredentials,
+} from "./store";
+
 // ─── Setup ──────────────────────────────────────────────────────────────────
 
 let tempHome: string;
+const originalPlatform = process.platform;
 
 /**
- * vi.mock is hoisted, so the homedir mock captures tempHome by closure.
- * After vi.resetModules(), the store module is re-imported and calls
- * homedir() again, getting the updated tempHome value.
+ * Mock homedir to return the current tempHome (captured by closure).
+ * Bun doesn't support importOriginal, so we provide explicit exports.
  */
-vi.mock("node:os", async (importOriginal) => {
-  const actual = (await importOriginal()) as typeof import("node:os");
-  return {
-    ...actual,
-    homedir: () => tempHome,
-  };
-});
-
-vi.mock("./client", () => ({
-  refreshAuthToken: vi.fn(),
+vi.mock("node:os", () => ({
+  homedir: () => tempHome,
+  tmpdir: () => require("os").tmpdir(),
 }));
 
-beforeEach(() => {
+// Use vi.spyOn instead of vi.mock for ./client to avoid cross-file contamination.
+// vi.mock leaks across test files in Bun 1.x; vi.spyOn + mockRestore cleans up properly.
+let refreshAuthTokenSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+beforeEach(async () => {
   tempHome = mkdtempSync(join(tmpdir(), "talent-agent-store-test-"));
-  vi.resetModules();
+
+  // Force file backend (not macOS Keychain) for deterministic test isolation.
+  // The Keychain is a global store that persists between tests.
+  _resetKeychainCheck();
+  Object.defineProperty(process, "platform", {
+    value: "linux",
+    writable: true,
+  });
+
+  const clientModule = await import("./client");
+  refreshAuthTokenSpy = vi
+    .spyOn(clientModule, "refreshAuthToken")
+    .mockResolvedValue(undefined as any);
 });
 
 afterEach(() => {
   rmSync(tempHome, { recursive: true, force: true });
-  vi.restoreAllMocks();
+  refreshAuthTokenSpy?.mockRestore();
+  // Restore platform for next test
+  Object.defineProperty(process, "platform", {
+    value: originalPlatform,
+    writable: true,
+  });
+  _resetKeychainCheck();
+  // Use clearAllMocks (not restoreAllMocks) to avoid resetting the
+  // vi.mock("node:os") factory's homedir implementation between tests.
+  vi.clearAllMocks();
 });
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/**
- * Dynamically import the store module so it gets a fresh CONFIG_DIR
- * based on the current tempHome value.
- */
-async function importStore() {
-  return await import("./store");
-}
-
-async function importClient() {
-  return await import("./client");
-}
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("isTokenExpired", () => {
-  it("returns false for a future timestamp in seconds", async () => {
-    const { isTokenExpired } = await importStore();
+  it("returns false for a future timestamp in seconds", () => {
     const futureSeconds = Math.floor(Date.now() / 1000) + 3600;
     expect(isTokenExpired(futureSeconds)).toBe(false);
   });
 
-  it("returns true for a past timestamp in seconds", async () => {
-    const { isTokenExpired } = await importStore();
+  it("returns true for a past timestamp in seconds", () => {
     const pastSeconds = Math.floor(Date.now() / 1000) - 3600;
     expect(isTokenExpired(pastSeconds)).toBe(true);
   });
 
-  it("returns false for a future timestamp in milliseconds", async () => {
-    const { isTokenExpired } = await importStore();
+  it("returns false for a future timestamp in milliseconds", () => {
     const futureMs = Date.now() + 3600000;
     expect(isTokenExpired(futureMs)).toBe(false);
   });
 
-  it("returns true for a past timestamp in milliseconds", async () => {
-    const { isTokenExpired } = await importStore();
+  it("returns true for a past timestamp in milliseconds", () => {
     const pastMs = Date.now() - 3600000;
     expect(isTokenExpired(pastMs)).toBe(true);
   });
 });
 
 describe("saveCredentials / loadCredentials round-trip", () => {
-  it("saves and loads credentials via file backend", async () => {
-    const { saveCredentials, loadCredentials } = await importStore();
-
+  it("saves and loads credentials via file backend", () => {
     const creds = {
       token: "test-jwt-token",
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -106,9 +122,7 @@ describe("saveCredentials / loadCredentials round-trip", () => {
     expect(loaded!.email).toBe("user@example.com");
   });
 
-  it("creates the .talent-agent directory if it doesn't exist", async () => {
-    const { saveCredentials } = await importStore();
-
+  it("creates the .talent-agent directory if it doesn't exist", () => {
     const configDir = join(tempHome, ".talent-agent");
     expect(existsSync(configDir)).toBe(false);
 
@@ -121,9 +135,7 @@ describe("saveCredentials / loadCredentials round-trip", () => {
     expect(existsSync(configDir)).toBe(true);
   });
 
-  it("writes credentials file as valid JSON", async () => {
-    const { saveCredentials } = await importStore();
-
+  it("writes credentials file as valid JSON", () => {
     saveCredentials({
       token: "test",
       expiresAt: 9999999999,
@@ -140,10 +152,7 @@ describe("saveCredentials / loadCredentials round-trip", () => {
 });
 
 describe("clearCredentials", () => {
-  it("removes the credentials file", async () => {
-    const { saveCredentials, clearCredentials, loadCredentials } =
-      await importStore();
-
+  it("removes the credentials file", () => {
     saveCredentials({
       token: "test",
       expiresAt: 9999999999,
@@ -157,22 +166,17 @@ describe("clearCredentials", () => {
     expect(loadCredentials()).toBeNull();
   });
 
-  it("does not throw when no credentials exist", async () => {
-    const { clearCredentials } = await importStore();
+  it("does not throw when no credentials exist", () => {
     expect(() => clearCredentials()).not.toThrow();
   });
 });
 
 describe("loadCredentials edge cases", () => {
-  it("returns null when no credentials file exists", async () => {
-    const { loadCredentials } = await importStore();
+  it("returns null when no credentials file exists", () => {
     expect(loadCredentials()).toBeNull();
   });
 
-  it("returns null when credentials file contains invalid JSON", async () => {
-    const { mkdirSync, writeFileSync } = await import("node:fs");
-    const { loadCredentials } = await importStore();
-
+  it("returns null when credentials file contains invalid JSON", () => {
     const configDir = join(tempHome, ".talent-agent");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, "credentials.json"), "not json", "utf-8");
@@ -183,8 +187,6 @@ describe("loadCredentials edge cases", () => {
 
 describe("getValidToken", () => {
   it("returns token when credentials are valid and not expired", async () => {
-    const { saveCredentials, getValidToken } = await importStore();
-
     saveCredentials({
       token: "valid-token",
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -196,15 +198,11 @@ describe("getValidToken", () => {
   });
 
   it("returns null when no credentials are stored", async () => {
-    const { getValidToken } = await importStore();
     const token = await getValidToken();
     expect(token).toBeNull();
   });
 
   it("refreshes expired token and saves new credentials", async () => {
-    const { saveCredentials, getValidToken } = await importStore();
-    const { refreshAuthToken } = await importClient();
-
     // Save expired credentials
     saveCredentials({
       token: "expired-token",
@@ -214,23 +212,19 @@ describe("getValidToken", () => {
     });
 
     // Mock refresh to return a new token
-    vi.mocked(refreshAuthToken).mockResolvedValue({
+    refreshAuthTokenSpy!.mockResolvedValue({
       auth: {
         token: "refreshed-token",
         expires_at: Math.floor(Date.now() / 1000) + 3600,
       },
-    });
+    } as any);
 
     const token = await getValidToken();
     expect(token).toBe("refreshed-token");
-    expect(refreshAuthToken).toHaveBeenCalledWith("expired-token");
+    expect(refreshAuthTokenSpy).toHaveBeenCalledWith("expired-token");
   });
 
   it("returns null and clears credentials when refresh fails", async () => {
-    const { saveCredentials, getValidToken, loadCredentials } =
-      await importStore();
-    const { refreshAuthToken } = await importClient();
-
     // Save expired credentials
     saveCredentials({
       token: "expired-token",
@@ -239,7 +233,7 @@ describe("getValidToken", () => {
     });
 
     // Mock refresh to fail
-    vi.mocked(refreshAuthToken).mockRejectedValue(new Error("Token expired"));
+    refreshAuthTokenSpy!.mockRejectedValue(new Error("Token expired"));
 
     const token = await getValidToken();
     expect(token).toBeNull();

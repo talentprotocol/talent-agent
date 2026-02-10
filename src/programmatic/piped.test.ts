@@ -2,7 +2,16 @@
  * Unit tests for piped JSONL mode.
  */
 import { Readable } from "node:stream";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  vi,
+} from "vitest";
 
 import { getDetail, query } from "../agent";
 
@@ -30,6 +39,10 @@ describe("piped mode", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  afterAll(() => {
+    mock.restore();
   });
 
   function createMockStdin(lines: string[]): void {
@@ -61,7 +74,7 @@ describe("piped mode", () => {
       JSON.stringify({ action: "search", query: "Find React devs" }),
     ]);
 
-    vi.mocked(query).mockResolvedValue({
+    (query as any).mockResolvedValue({
       result: {
         type: "search",
         session: "s1",
@@ -88,7 +101,7 @@ describe("piped mode", () => {
       JSON.stringify({ action: "detail", session: "s1", index: 0 }),
     ]);
 
-    vi.mocked(getDetail).mockResolvedValue({
+    (getDetail as any).mockResolvedValue({
       result: {
         type: "detail",
         session: "s1",
@@ -116,7 +129,7 @@ describe("piped mode", () => {
       }),
     ]);
 
-    vi.mocked(query).mockResolvedValue({
+    (query as any).mockResolvedValue({
       result: {
         type: "search",
         session: "s1",
@@ -139,7 +152,7 @@ describe("piped mode", () => {
   it("handles legacy search format", async () => {
     createMockStdin([JSON.stringify({ query: "Find React devs" })]);
 
-    vi.mocked(query).mockResolvedValue({
+    (query as any).mockResolvedValue({
       result: {
         type: "search",
         session: "s1",
@@ -163,7 +176,7 @@ describe("piped mode", () => {
   it("handles legacy detail format", async () => {
     createMockStdin([JSON.stringify({ detail: 0, session: "s1" })]);
 
-    vi.mocked(getDetail).mockResolvedValue({
+    (getDetail as any).mockResolvedValue({
       result: {
         type: "detail",
         session: "s1",
@@ -200,7 +213,7 @@ describe("piped mode", () => {
       JSON.stringify({ action: "search", query: "Find devs" }),
     ]);
 
-    vi.mocked(query).mockResolvedValue({
+    (query as any).mockResolvedValue({
       result: {
         type: "search",
         session: "s1",
@@ -235,7 +248,7 @@ describe("piped mode", () => {
   it("handles agent errors per line", async () => {
     createMockStdin([JSON.stringify({ action: "search", query: "Find devs" })]);
 
-    vi.mocked(query).mockRejectedValue(
+    (query as any).mockRejectedValue(
       new Error("connect ECONNREFUSED 127.0.0.1:9200"),
     );
 
@@ -255,7 +268,7 @@ describe("piped mode", () => {
     ]);
 
     let callCount = 0;
-    vi.mocked(query).mockImplementation(async (q) => {
+    (query as any).mockImplementation(async (q) => {
       callCount++;
       return {
         result: {
@@ -289,7 +302,7 @@ describe("piped mode", () => {
       }),
     ]);
 
-    vi.mocked(query).mockResolvedValue({
+    (query as any).mockResolvedValue({
       result: {
         type: "search",
         session: "existing-session",

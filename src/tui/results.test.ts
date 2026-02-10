@@ -3,23 +3,24 @@
  *
  * Since the TUI uses @opentui/core Renderables, we mock the renderer
  * and verify the panel's state management and update logic.
+ *
+ * Uses vi.resetModules() + dynamic import to avoid stale module mocks
+ * from other test files (e.g. app.test.ts). Mock assertions access
+ * methods directly on returned instances (panel.container.add) rather
+ * than shared module-level vi.fn() refs.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, mock, vi } from "vitest";
 
 import type { DetailResult, SearchResult } from "../agent";
 import { createResultsPanel } from "./results";
 
-// Mock @opentui/core with proper class constructors
-const mockAdd = vi.fn();
-const mockRemove = vi.fn();
-const mockGetChildren = vi.fn(() => []);
-
+// Mock @opentui/core — each instance gets its own vi.fn() methods
 vi.mock("@opentui/core", () => {
   class BoxRenderable {
     id: string;
-    add = mockAdd;
-    remove = mockRemove;
-    getChildren = mockGetChildren;
+    add = vi.fn();
+    remove = vi.fn();
+    getChildren = vi.fn(() => []);
     constructor(_renderer: any, opts: any) {
       this.id = opts.id;
     }
@@ -47,10 +48,12 @@ vi.mock("@opentui/core", () => {
 
 describe("createResultsPanel", () => {
   const mockRenderer = {} as any;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetChildren.mockReturnValue([]);
+  });
+
+  afterAll(() => {
+    mock.restore();
   });
 
   it("returns container, update, and getState", () => {
@@ -74,7 +77,7 @@ describe("createResultsPanel", () => {
 
     // Initial render already happens in createResultsPanel
     // The welcome screen should have been rendered via container.add
-    expect(mockAdd).toHaveBeenCalled();
+    expect(panel.container.add).toHaveBeenCalled();
   });
 
   it("updates state on update call", () => {
@@ -151,17 +154,17 @@ describe("createResultsPanel", () => {
   });
 
   it("clears children before each render", () => {
-    // Setup: return mock children for removal
+    const panel = createResultsPanel(mockRenderer);
+
+    // Setup: make getChildren return mock children for removal
     const child1 = { id: "child-1" };
     const child2 = { id: "child-2" };
-    mockGetChildren.mockReturnValue([child1, child2]);
-
-    const panel = createResultsPanel(mockRenderer);
+    (panel.container.getChildren as any).mockReturnValue([child1, child2]);
 
     // Update triggers re-render which should clear children first
     panel.update({ loading: true });
 
-    // mockRemove should have been called to clear existing children
-    expect(mockRemove).toHaveBeenCalled();
+    // container.remove should have been called to clear existing children
+    expect(panel.container.remove).toHaveBeenCalled();
   });
 });

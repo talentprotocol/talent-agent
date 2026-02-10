@@ -2,16 +2,12 @@
  * Environment variable loading and validation for the CLI.
  *
  * Loads .env from the CLI directory or talent-pro app directory.
- * Required vars are for auth + the talent-pro API, not for local agent execution.
+ * Only TALENT_PRO_URL is required — all auth and agent calls go through talent-pro.
  */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-const REQUIRED_ENV_VARS = [
-  "TALENT_PROTOCOL_API_URL",
-  "TALENT_PROTOCOL_API_KEY",
-  "TALENT_PRO_URL",
-] as const;
+const REQUIRED_ENV_VARS = ["TALENT_PRO_URL"] as const;
 
 /**
  * Load environment variables from .env files.

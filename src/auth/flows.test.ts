@@ -16,38 +16,20 @@ import {
 import { runEmailFlow, runInteractiveLogin, runWalletFlow } from "./flows";
 import { saveCredentials } from "./store";
 
-// Mock readline for prompts
+// Mock readline for prompts — use vi.spyOn instead of vi.mock to prevent
+// cross-file contamination (vi.mock leaks across files in Bun 1.x).
 const mockQuestion = vi.fn();
 const mockClose = vi.fn();
 
-vi.mock("node:readline", () => ({
-  createInterface: vi.fn(() => ({
-    question: mockQuestion,
-    close: mockClose,
-  })),
-}));
+let readlineSpy: ReturnType<typeof vi.spyOn> | undefined;
+let clientSpies: ReturnType<typeof vi.spyOn>[] = [];
 
-// Mock auth client
-vi.mock("./client", () => ({
-  emailRequestCode: vi.fn().mockResolvedValue({ success: true }),
-  emailVerifyCode: vi.fn().mockResolvedValue({
-    auth: { token: "email-jwt", expires_at: 1700000000 },
-  }),
-  createNonce: vi.fn().mockResolvedValue({ nonce: "test-nonce" }),
-  createAuthToken: vi.fn().mockResolvedValue({
-    auth: { token: "wallet-jwt", expires_at: 1700000000 },
-  }),
-  googleSignIn: vi.fn().mockResolvedValue({
-    auth: { token: "google-jwt", expires_at: 1700000000 },
-  }),
-}));
-
-// Mock credential store
+// Keep vi.mock for modules that no downstream test needs as real:
+// ./store (store.test.ts runs before this file) and ./google-server
 vi.mock("./store", () => ({
   saveCredentials: vi.fn(),
 }));
 
-// Mock google-server (avoid starting real server in tests)
 vi.mock("./google-server", () => ({
   startGoogleOAuthFlow: vi.fn().mockResolvedValue("mock-google-id-token"),
 }));
@@ -69,11 +51,41 @@ function setPromptAnswers(...answers: string[]): void {
 
 // ─── Setup ──────────────────────────────────────────────────────────────────
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+
+  // Spy on node:readline to return mock interface (prevents contaminating piped.test.ts)
+  const readline = await import("node:readline");
+  readlineSpy = vi.spyOn(readline, "createInterface").mockReturnValue({
+    question: mockQuestion,
+    close: mockClose,
+  } as any);
+
+  // Spy on ./client functions (prevents contaminating client.test.ts)
+  const client = await import("./client");
+  clientSpies = [
+    vi
+      .spyOn(client, "emailRequestCode")
+      .mockResolvedValue({ success: true } as any),
+    vi.spyOn(client, "emailVerifyCode").mockResolvedValue({
+      auth: { token: "email-jwt", expires_at: 1700000000 },
+    } as any),
+    vi
+      .spyOn(client, "createNonce")
+      .mockResolvedValue({ nonce: "test-nonce" } as any),
+    vi.spyOn(client, "createAuthToken").mockResolvedValue({
+      auth: { token: "wallet-jwt", expires_at: 1700000000 },
+    } as any),
+    vi.spyOn(client, "googleSignIn").mockResolvedValue({
+      auth: { token: "google-jwt", expires_at: 1700000000 },
+    } as any),
+  ];
 });
 
 afterEach(() => {
+  readlineSpy?.mockRestore();
+  for (const spy of clientSpies) spy.mockRestore();
+  clientSpies = [];
   vi.restoreAllMocks();
 });
 

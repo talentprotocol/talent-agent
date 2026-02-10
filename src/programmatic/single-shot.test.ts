@@ -1,7 +1,16 @@
 /**
  * Unit tests for single-shot mode.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  vi,
+} from "vitest";
 
 import { getDetail, query } from "../agent";
 import { formatDetailResult, formatError, formatSearchResult } from "../format";
@@ -40,9 +49,13 @@ describe("runSingleShot", () => {
     vi.restoreAllMocks();
   });
 
+  afterAll(() => {
+    mock.restore();
+  });
+
   describe("search mode (no detailIndex)", () => {
     it("prints formatted search results", async () => {
-      vi.mocked(query).mockResolvedValue({
+      (query as any).mockResolvedValue({
         result: {
           type: "search",
           session: "s1",
@@ -65,7 +78,7 @@ describe("runSingleShot", () => {
     });
 
     it("prints formatted detail results when agent returns detail", async () => {
-      vi.mocked(query).mockResolvedValue({
+      (query as any).mockResolvedValue({
         result: {
           type: "detail",
           session: "s1",
@@ -82,7 +95,7 @@ describe("runSingleShot", () => {
     });
 
     it("prints error and exits with EXIT_APP_ERROR on error result", async () => {
-      vi.mocked(query).mockResolvedValue({
+      (query as any).mockResolvedValue({
         result: {
           type: "error",
           session: "s1",
@@ -100,7 +113,7 @@ describe("runSingleShot", () => {
 
   describe("detail mode (with detailIndex and sessionId)", () => {
     it("calls getDetail when detailIndex and sessionId provided", async () => {
-      vi.mocked(getDetail).mockResolvedValue({
+      (getDetail as any).mockResolvedValue({
         result: {
           type: "detail",
           session: "s1",
@@ -120,7 +133,7 @@ describe("runSingleShot", () => {
 
   describe("JSON output", () => {
     it("wraps successful search result in JSON envelope", async () => {
-      vi.mocked(query).mockResolvedValue({
+      (query as any).mockResolvedValue({
         result: {
           type: "search",
           session: "s1",
@@ -149,7 +162,7 @@ describe("runSingleShot", () => {
     });
 
     it("wraps error result in JSON error envelope", async () => {
-      vi.mocked(query).mockResolvedValue({
+      (query as any).mockResolvedValue({
         result: {
           type: "error",
           session: "s1",
@@ -171,7 +184,7 @@ describe("runSingleShot", () => {
 
   describe("exception handling", () => {
     it("catches thrown errors and outputs formatted error", async () => {
-      vi.mocked(query).mockRejectedValue(new Error("Network failure"));
+      (query as any).mockRejectedValue(new Error("Network failure"));
 
       await expect(runSingleShot("Find devs")).rejects.toThrow("process.exit");
 
@@ -180,7 +193,7 @@ describe("runSingleShot", () => {
     });
 
     it("catches thrown errors and outputs JSON error envelope in json mode", async () => {
-      vi.mocked(query).mockRejectedValue(
+      (query as any).mockRejectedValue(
         new Error("connect ECONNREFUSED 127.0.0.1:9200"),
       );
 
@@ -197,7 +210,7 @@ describe("runSingleShot", () => {
 
   describe("debug flag", () => {
     it("passes debug option to query", async () => {
-      vi.mocked(query).mockResolvedValue({
+      (query as any).mockResolvedValue({
         result: {
           type: "search",
           session: "s1",
@@ -218,7 +231,7 @@ describe("runSingleShot", () => {
 
   describe("session passthrough", () => {
     it("passes session to query for refinement", async () => {
-      vi.mocked(query).mockResolvedValue({
+      (query as any).mockResolvedValue({
         result: {
           type: "search",
           session: "s1",

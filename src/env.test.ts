@@ -25,9 +25,7 @@ describe("validateEnv", () => {
     vi.restoreAllMocks();
   });
 
-  it("passes when all required env vars are set", () => {
-    process.env.TALENT_PROTOCOL_API_URL = "https://api.talentprotocol.com";
-    process.env.TALENT_PROTOCOL_API_KEY = "test-api-key";
+  it("passes when TALENT_PRO_URL is set", () => {
     process.env.TALENT_PRO_URL = "https://pro.talent.app";
 
     // Should not throw or call process.exit
@@ -35,48 +33,25 @@ describe("validateEnv", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
-  it("exits with error when TALENT_PROTOCOL_API_URL is missing", () => {
-    process.env.TALENT_PROTOCOL_API_KEY = "test-api-key";
-    process.env.TALENT_PRO_URL = "https://pro.talent.app";
-    delete process.env.TALENT_PROTOCOL_API_URL;
+  it("exits with error when TALENT_PRO_URL is missing", () => {
+    delete process.env.TALENT_PRO_URL;
 
     expect(() => validateEnv()).toThrow("process.exit called");
     expect(mockExit).toHaveBeenCalledWith(1);
     expect(mockConsoleError).toHaveBeenCalledWith(
       "Missing required environment variables:",
     );
-  });
-
-  it("exits with error when multiple env vars are missing", () => {
-    delete process.env.TALENT_PROTOCOL_API_URL;
-    delete process.env.TALENT_PROTOCOL_API_KEY;
-    delete process.env.TALENT_PRO_URL;
-
-    expect(() => validateEnv()).toThrow("process.exit called");
-    expect(mockExit).toHaveBeenCalledWith(1);
-
-    // Should list each missing variable
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      "  - TALENT_PROTOCOL_API_URL",
-    );
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      "  - TALENT_PROTOCOL_API_KEY",
-    );
     expect(mockConsoleError).toHaveBeenCalledWith("  - TALENT_PRO_URL");
   });
 
   it("treats empty string as missing", () => {
-    process.env.TALENT_PROTOCOL_API_URL = "";
-    process.env.TALENT_PROTOCOL_API_KEY = "test-api-key";
-    process.env.TALENT_PRO_URL = "https://pro.talent.app";
+    process.env.TALENT_PRO_URL = "";
 
     expect(() => validateEnv()).toThrow("process.exit called");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("includes hint about .env file location", () => {
-    delete process.env.TALENT_PROTOCOL_API_URL;
-    delete process.env.TALENT_PROTOCOL_API_KEY;
     delete process.env.TALENT_PRO_URL;
 
     expect(() => validateEnv()).toThrow("process.exit called");

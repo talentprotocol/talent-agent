@@ -1,11 +1,9 @@
 /**
- * HTTP client for Talent Protocol API auth endpoints.
+ * HTTP client for auth endpoints via talent-pro.
  *
- * Uses native `fetch` (available in Bun) to call the same endpoints
- * as the shared `@talent/data/services/talent/auth.ts` package, but
- * without any dependency on the talent-apps monorepo.
- *
- * All endpoints require the `X-API-KEY` header from `TALENT_PROTOCOL_API_KEY`.
+ * All auth requests are routed through talent-pro's /api/auth/* proxy
+ * endpoints. The CLI only needs TALENT_PRO_URL — no direct Talent API
+ * connection or API key is required.
  */
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -28,29 +26,15 @@ export interface CreateNonceResponse {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function getApiBaseUrl(): string {
-  const url = process.env.TALENT_PROTOCOL_API_URL;
-  if (!url) throw new Error("TALENT_PROTOCOL_API_URL is not set");
-  return url;
-}
-
-function getApiKey(): string {
-  const key = process.env.TALENT_PROTOCOL_API_KEY;
-  if (!key) throw new Error("TALENT_PROTOCOL_API_KEY is not set");
-  return key;
+function getProUrl(): string {
+  const url = process.env.TALENT_PRO_URL;
+  if (!url) throw new Error("TALENT_PRO_URL is not set");
+  return url.replace(/\/$/, "");
 }
 
 function defaultHeaders(): Record<string, string> {
   return {
     "Content-Type": "application/json",
-    "X-API-KEY": getApiKey(),
-  };
-}
-
-function headersWithAuth(token: string): Record<string, string> {
-  return {
-    ...defaultHeaders(),
-    Authorization: `Bearer ${token}`,
   };
 }
 
@@ -78,12 +62,12 @@ async function handleErrorResponse(
 
 /**
  * Request a 6-digit email verification code.
- * POST /auth/email_request_code
+ * POST /api/auth/email-request-code
  */
 export async function emailRequestCode(
   email: string,
 ): Promise<EmailRequestCodeResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/auth/email_request_code`, {
+  const response = await fetch(`${getProUrl()}/api/auth/email-request-code`, {
     method: "POST",
     headers: defaultHeaders(),
     body: JSON.stringify({ email }),
@@ -98,13 +82,13 @@ export async function emailRequestCode(
 
 /**
  * Verify a 6-digit email code and get an auth token.
- * POST /auth/email_verify_code
+ * POST /api/auth/email-verify-code
  */
 export async function emailVerifyCode(
   email: string,
   code: string,
 ): Promise<AuthTokenResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/auth/email_verify_code`, {
+  const response = await fetch(`${getProUrl()}/api/auth/email-verify-code`, {
     method: "POST",
     headers: defaultHeaders(),
     body: JSON.stringify({ email, code }),
@@ -119,12 +103,12 @@ export async function emailVerifyCode(
 
 /**
  * Authenticate with a Google ID token.
- * POST /auth/google
+ * POST /api/auth/google
  */
 export async function googleSignIn(
   idToken: string,
 ): Promise<AuthTokenResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/auth/google`, {
+  const response = await fetch(`${getProUrl()}/api/auth/google`, {
     method: "POST",
     headers: defaultHeaders(),
     body: JSON.stringify({ id_token: idToken }),
@@ -139,12 +123,12 @@ export async function googleSignIn(
 
 /**
  * Create a nonce for wallet (SIWE) authentication.
- * POST /auth/create_nonce
+ * POST /api/auth/create-nonce
  */
 export async function createNonce(
   address: string,
 ): Promise<CreateNonceResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/auth/create_nonce`, {
+  const response = await fetch(`${getProUrl()}/api/auth/create-nonce`, {
     method: "POST",
     headers: defaultHeaders(),
     body: JSON.stringify({ address }),
@@ -159,7 +143,7 @@ export async function createNonce(
 
 /**
  * Create an auth token from a wallet signature (SIWE).
- * POST /auth/create_auth_token
+ * POST /api/auth/create-auth-token
  */
 export async function createAuthToken(
   address: string,
@@ -167,7 +151,7 @@ export async function createAuthToken(
   chainId: number,
   siweMessage: string,
 ): Promise<AuthTokenResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/auth/create_auth_token`, {
+  const response = await fetch(`${getProUrl()}/api/auth/create-auth-token`, {
     method: "POST",
     headers: defaultHeaders(),
     body: JSON.stringify({
@@ -187,14 +171,17 @@ export async function createAuthToken(
 
 /**
  * Refresh an existing auth token.
- * POST /auth/refresh_auth_token
+ * POST /api/auth/refresh-auth-token
  */
 export async function refreshAuthToken(
   token: string,
 ): Promise<AuthTokenResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/auth/refresh_auth_token`, {
+  const response = await fetch(`${getProUrl()}/api/auth/refresh-auth-token`, {
     method: "POST",
-    headers: headersWithAuth(token),
+    headers: {
+      ...defaultHeaders(),
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({}),
   });
 

@@ -1,7 +1,12 @@
 /**
- * Unit tests for the Talent Protocol API auth client.
+ * Unit tests for the talent-pro auth client.
  *
  * Mocks global `fetch` and env vars to test each endpoint.
+ * All requests now go through talent-pro (TALENT_PRO_URL),
+ * not the Talent API directly.
+ *
+ * Note: flows.test.ts runs before this file and mocks ./client.
+ * flows.test.ts now calls mock.restore() in afterAll to prevent leaking.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,8 +24,7 @@ import {
 const originalEnv = { ...process.env };
 
 beforeEach(() => {
-  process.env.TALENT_PROTOCOL_API_URL = "https://api.example.com";
-  process.env.TALENT_PROTOCOL_API_KEY = "test-api-key";
+  process.env.TALENT_PRO_URL = "https://pro.talent.app";
 });
 
 afterEach(() => {
@@ -51,7 +55,7 @@ function mockFetchError(status: number, body: unknown): void {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("emailRequestCode", () => {
-  it("sends POST to /auth/email_request_code with correct headers and body", async () => {
+  it("sends POST to /api/auth/email-request-code with correct headers and body", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(
@@ -62,16 +66,21 @@ describe("emailRequestCode", () => {
 
     expect(result.success).toBe(true);
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api.example.com/auth/email_request_code",
+      "https://pro.talent.app/api/auth/email-request-code",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
           "Content-Type": "application/json",
-          "X-API-KEY": "test-api-key",
         }),
         body: JSON.stringify({ email: "user@example.com" }),
       }),
     );
+    // Should NOT include X-API-KEY
+    const callHeaders = fetchSpy.mock.calls[0]![1]?.headers as Record<
+      string,
+      string
+    >;
+    expect(callHeaders["X-API-KEY"]).toBeUndefined();
   });
 
   it("throws on non-ok response", async () => {
@@ -92,6 +101,21 @@ describe("emailVerifyCode", () => {
 
     expect(result.auth.token).toBe("jwt-token");
     expect(result.auth.expires_at).toBe(1700000000);
+  });
+
+  it("calls the correct talent-pro URL", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ auth: { token: "t", expires_at: 0 } }), {
+        status: 200,
+      }),
+    );
+
+    await emailVerifyCode("user@example.com", "123456");
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pro.talent.app/api/auth/email-verify-code",
+      expect.anything(),
+    );
   });
 
   it("throws on invalid code", async () => {
@@ -118,7 +142,7 @@ describe("googleSignIn", () => {
 
     expect(result.auth.token).toBe("google-jwt");
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api.example.com/auth/google",
+      "https://pro.talent.app/api/auth/google",
       expect.objectContaining({
         body: JSON.stringify({ id_token: "google-id-token" }),
       }),
@@ -136,13 +160,21 @@ describe("googleSignIn", () => {
 
 describe("createNonce", () => {
   it("returns nonce for wallet address", async () => {
-    mockFetchOk({ nonce: "random-nonce-123" });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ nonce: "random-nonce-123" }), {
+        status: 200,
+      }),
+    );
 
     const result = await createNonce(
       "0x1234567890abcdef1234567890abcdef12345678",
     );
 
     expect(result.nonce).toBe("random-nonce-123");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://pro.talent.app/api/auth/create-nonce",
+      expect.anything(),
+    );
   });
 
   it("throws on failure", async () => {
@@ -172,7 +204,7 @@ describe("createAuthToken", () => {
 
     expect(result.auth.token).toBe("siwe-jwt");
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api.example.com/auth/create_auth_token",
+      "https://pro.talent.app/api/auth/create-auth-token",
       expect.objectContaining({
         body: JSON.stringify({
           address: "0x1234567890abcdef1234567890abcdef12345678",
@@ -200,7 +232,7 @@ describe("refreshAuthToken", () => {
 
     expect(result.auth.token).toBe("refreshed-jwt");
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api.example.com/auth/refresh_auth_token",
+      "https://pro.talent.app/api/auth/refresh-auth-token",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer old-jwt",
@@ -219,19 +251,11 @@ describe("refreshAuthToken", () => {
 });
 
 describe("missing environment variables", () => {
-  it("throws when TALENT_PROTOCOL_API_URL is missing", async () => {
-    delete process.env.TALENT_PROTOCOL_API_URL;
+  it("throws when TALENT_PRO_URL is missing", async () => {
+    delete process.env.TALENT_PRO_URL;
 
     await expect(emailRequestCode("user@test.com")).rejects.toThrow(
-      "TALENT_PROTOCOL_API_URL is not set",
-    );
-  });
-
-  it("throws when TALENT_PROTOCOL_API_KEY is missing", async () => {
-    delete process.env.TALENT_PROTOCOL_API_KEY;
-
-    await expect(emailRequestCode("user@test.com")).rejects.toThrow(
-      "TALENT_PROTOCOL_API_KEY is not set",
+      "TALENT_PRO_URL is not set",
     );
   });
 });
