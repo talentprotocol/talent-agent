@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+bun.lock
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+coverage/
+*.log
