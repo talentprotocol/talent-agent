@@ -2,18 +2,24 @@
  * Unit tests for interactive authentication flows.
  *
  * Mocks readline (prompts), the auth client, and credential storage
- * to test the email, wallet, and interactive login selection flows.
- * Google flow is tested lightly (it involves Bun.serve + browser).
+ * to test the email, Google, wallet, and interactive login selection flows.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createAuthToken,
+  createCliSession,
   createNonce,
   emailRequestCode,
   emailVerifyCode,
+  pollCliSession,
 } from "./client";
-import { runEmailFlow, runInteractiveLogin, runWalletFlow } from "./flows";
+import {
+  runEmailFlow,
+  runGoogleFlow,
+  runInteractiveLogin,
+  runWalletFlow,
+} from "./flows";
 import { saveCredentials } from "./store";
 
 // Mock node:readline — vi.mock works with ESM (vi.spyOn does not)
@@ -37,17 +43,16 @@ vi.mock("./client", () => ({
   createAuthToken: vi.fn().mockResolvedValue({
     auth: { token: "wallet-jwt", expires_at: 1700000000 },
   }),
-  googleSignIn: vi.fn().mockResolvedValue({
+  createCliSession: vi.fn().mockResolvedValue({ sessionId: "mock-session-id" }),
+  pollCliSession: vi.fn().mockResolvedValue({
+    status: "complete",
     auth: { token: "google-jwt", expires_at: 1700000000 },
   }),
+  getCliAuthUrl: vi.fn().mockReturnValue("https://pro.talent.app"),
 }));
 
 vi.mock("./store", () => ({
   saveCredentials: vi.fn(),
-}));
-
-vi.mock("./google-server", () => ({
-  startGoogleOAuthFlow: vi.fn().mockResolvedValue("mock-google-id-token"),
 }));
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -154,6 +159,28 @@ describe("runWalletFlow", () => {
   });
 });
 
+describe("runGoogleFlow", () => {
+  it("creates a CLI session, polls, and saves credentials", async () => {
+    const creds = await runGoogleFlow();
+
+    expect(createCliSession).toHaveBeenCalled();
+    expect(pollCliSession).toHaveBeenCalledWith("mock-session-id");
+    expect(saveCredentials).toHaveBeenCalledWith({
+      token: "google-jwt",
+      expiresAt: 1700000000,
+      authMethod: "google",
+    });
+    expect(creds.token).toBe("google-jwt");
+    expect(creds.authMethod).toBe("google");
+  });
+
+  it("throws when session expires", async () => {
+    vi.mocked(pollCliSession).mockResolvedValueOnce({ status: "expired" });
+
+    await expect(runGoogleFlow()).rejects.toThrow("session expired");
+  });
+});
+
 describe("runInteractiveLogin", () => {
   it("dispatches to email flow when method is 'email'", async () => {
     setPromptAnswers("user@example.com", "123456");
@@ -179,6 +206,8 @@ describe("runInteractiveLogin", () => {
 
     expect(creds.authMethod).toBe("google");
     expect(creds.token).toBe("google-jwt");
+    expect(createCliSession).toHaveBeenCalled();
+    expect(pollCliSession).toHaveBeenCalledWith("mock-session-id");
   });
 
   it("prompts for method selection when no method specified", async () => {
