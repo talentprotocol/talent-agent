@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "talent-cli",
+  "description": "AI-powered talent profile search using natural language",
+  "owner": {
+    "name": "Talent",
+    "email": "contact@talentprotocol.com"
+  },
+  "plugins": [
+    {
+      "name": "talent-cli",
+      "description": "Search talent profiles, refine results, and get detailed candidate info via natural language",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/talent-cli"],
+      "category": "development"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+services:
+  talent-cli:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    env_file: ../.env
+    stdin_open: true     # for --pipe mode
+    tty: false
+  talent-cli-mcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    env_file: ../.env
+    command: ["bun", "run", "src/index.ts", "--serve"]
