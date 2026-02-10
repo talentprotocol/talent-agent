@@ -113,7 +113,7 @@ export async function runWalletFlow(): Promise<StoredCredentials> {
 
   // Build a basic SIWE message
   const chainId = 1; // Default to Ethereum mainnet
-  const domain = "talent-cli";
+  const domain = "talent-agent";
   const uri = "https://cli.talent.app";
   const issuedAt = new Date().toISOString();
   const siweMessage = [

@@ -1,10 +1,10 @@
 {
-  "name": "talent-cli",
+  "name": "talent-agent",
   "version": "1.0.0",
+  "description": "AI-powered talent search CLI for natural language queries",
   "type": "module",
-  "private": true,
   "bin": {
-    "talent-cli": "./src/index.ts"
+    "talent-agent": "./src/index.ts"
   },
   "files": [
     "src",
@@ -14,6 +14,25 @@
     ".": "./src/lib.ts",
     "./cli": "./src/index.ts"
   },
+  "keywords": [
+    "cli",
+    "ai",
+    "talent",
+    "search",
+    "mcp",
+    "tui",
+    "natural-language",
+    "bun"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/talentprotocol/talent-agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/talentprotocol/talent-agent/issues"
+  },
+  "homepage": "https://pro.talent.app/cli",
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun run --watch src/index.ts",
@@ -25,8 +44,10 @@
     "test:watch": "vitest",
     "changeset": "changeset",
     "version:packages": "changeset version",
-    "docker:build": "docker build -f docker/Dockerfile -t talent-cli .",
-    "docker:serve": "docker compose -f docker/docker-compose.yml up talent-cli-mcp"
+    "ci:version": "changeset version",
+    "ci:publish": "changeset publish",
+    "docker:build": "docker build -f docker/Dockerfile -t talent-agent .",
+    "docker:serve": "docker compose -f docker/docker-compose.yml up talent-agent-mcp"
   },
   "lint-staged": {
     "src/**/*.ts": "prettier --write"

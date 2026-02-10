@@ -45,13 +45,13 @@ export function toAIFriendlyError(error: unknown): {
     msg.includes("Not authenticated")
   )
     return {
-      message: "Not authenticated. Run 'talent-cli login' first.",
+      message: "Not authenticated. Run 'talent-agent login' first.",
       code: "AUTH_ERROR",
     };
   if (msg.includes("401") || msg.includes("Unauthorized"))
     return {
       message:
-        "Auth token is invalid or expired. Run 'talent-cli login' to re-authenticate.",
+        "Auth token is invalid or expired. Run 'talent-agent login' to re-authenticate.",
       code: "AUTH_ERROR",
     };
   if (msg.includes("403") || msg.includes("Pro organization required"))

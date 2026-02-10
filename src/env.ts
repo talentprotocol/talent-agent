@@ -15,7 +15,7 @@ const REQUIRED_ENV_VARS = [
 
 /**
  * Load environment variables from .env files.
- * Tries talent-cli/.env first, then falls back to talent-apps/apps/talent-pro/.env.
+ * Tries talent-agent/.env first, then falls back to talent-apps/apps/talent-pro/.env.
  */
 export function loadEnv(): void {
   const cliDir = resolve(import.meta.dir, "..");
@@ -71,7 +71,9 @@ export function validateEnv(): void {
     for (const v of missing) {
       console.error(`  - ${v}`);
     }
-    console.error("\nCreate a .env file in talent-cli/ with these variables.");
+    console.error(
+      "\nCreate a .env file in talent-agent/ with these variables.",
+    );
     console.error(
       "You can also place it in talent-apps/apps/talent-pro/.env as a fallback.",
     );

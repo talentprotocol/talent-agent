@@ -504,7 +504,7 @@ export async function query(
       result: {
         type: "error",
         session: session.id,
-        error: "Not authenticated. Run 'talent-cli login' first.",
+        error: "Not authenticated. Run 'talent-agent login' first.",
         code: "AUTH_ERROR",
       },
       meta: { durationMs: 0, tokensUsed: 0, toolsCalled: [] },

@@ -157,7 +157,7 @@ describe("session persistence", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "talent-cli-test-"));
+    tmpDir = mkdtempSync(join(tmpdir(), "talent-agent-test-"));
   });
 
   afterEach(() => {
