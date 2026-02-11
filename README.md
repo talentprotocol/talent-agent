@@ -1,5 +1,9 @@
 # talent-agent
 
+[![npm version](https://img.shields.io/npm/v/talent-agent.svg)](https://www.npmjs.com/package/talent-agent)
+[![CI](https://github.com/talentprotocol/talent-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/talentprotocol/talent-agent/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 AI-powered talent profile search using natural language. CLI tool with interactive TUI, JSON output, pipe mode, and MCP server.
 
 ## Installation
@@ -8,12 +12,16 @@ AI-powered talent profile search using natural language. CLI tool with interacti
 
 - [Bun](https://bun.sh/) v1.3+
 
-### Setup
+### Install from npm
 
 ```bash
-git clone <repo-url> talent-agent
-cd talent-agent
-bun install
+npm install -g talent-agent
+```
+
+Or run without installing:
+
+```bash
+npx talent-agent "Find React developers in Lisbon"
 ```
 
 ### Authentication
@@ -31,7 +39,7 @@ talent-agent logout             # Clear credentials
 
 ```bash
 # Search for profiles
-talent-agent "Find React developers in Berlin"
+talent-agent "Find React developers in Lisbon"
 
 # JSON output (auto-enabled when piping stdout)
 talent-agent --json "Find senior Python engineers"
@@ -107,16 +115,16 @@ Tools exposed: `talent_search`, `talent_detail`, `talent_refine`.
 
 ## Options
 
-| Flag | Short | Description |
-| ---- | ----- | ----------- |
-| `--help` | `-h` | Show help message |
-| `--version` | `-v` | Show version number |
-| `--json` | `-j` | Output results as JSON envelope |
-| `--session <id>` | `-s` | Continue a previous search session |
-| `--detail <index>` | `-d` | Show detailed profile at index from last search |
-| `--pipe` | `-p` | JSONL mode: read from stdin, write to stdout |
-| `--debug` | `-D` | Print agent diagnostics to stderr |
-| `--serve` | | Start as MCP server (stdio transport) |
+| Flag               | Short | Description                                     |
+| ------------------ | ----- | ----------------------------------------------- |
+| `--help`           | `-h`  | Show help message                               |
+| `--version`        | `-v`  | Show version number                             |
+| `--json`           | `-j`  | Output results as JSON envelope                 |
+| `--session <id>`   | `-s`  | Continue a previous search session              |
+| `--detail <index>` | `-d`  | Show detailed profile at index from last search |
+| `--pipe`           | `-p`  | JSONL mode: read from stdin, write to stdout    |
+| `--debug`          | `-D`  | Print agent diagnostics to stderr               |
+| `--serve`          |       | Start as MCP server (stdio transport)           |
 
 Combine `--help` and `--json` to get a structured capabilities schema for agent self-discovery:
 
@@ -134,7 +142,7 @@ RESULT=$(talent-agent --json "Find Python developers")
 SESSION=$(echo "$RESULT" | jq -r '.data.session')
 
 # Refine
-talent-agent --json --session "$SESSION" "Only show those in Berlin"
+talent-agent --json --session "$SESSION" "Only show those in Lisbon"
 
 # Detail
 talent-agent --json --session "$SESSION" --detail 0
@@ -176,37 +184,41 @@ talent-agent --debug --json "Find React devs" 2>debug.log
 
 ```
 [debug] Agent calling: searchProfiles
-[debug] Tool input: {"languages":["React"],"location":"Berlin"}
+[debug] Tool input: {"languages":["React"],"location":"Lisbon"}
 [debug] Tool response: 142ms, 23 profiles
 [debug] Agent total: 1,847 tokens, 3.2s
 ```
 
 ### Structured Exit Codes
 
-| Code | Meaning |
-| ---- | ------- |
-| 0 | Success |
-| 1 | Application error (no results, agent failure) |
-| 2 | Invalid arguments or usage |
-| 3 | Missing or invalid API keys |
-| 4 | Rate limit, timeout, transient failure |
+| Code | Meaning                                       |
+| ---- | --------------------------------------------- |
+| 0    | Success                                       |
+| 1    | Application error (no results, agent failure) |
+| 2    | Invalid arguments or usage                    |
+| 3    | Missing or invalid API keys                   |
+| 4    | Rate limit, timeout, transient failure        |
 
 ### Error Codes
 
-| Code | Meaning |
-| ---- | ------- |
-| `CONNECTION_ERROR` | Service unreachable |
-| `AUTH_ERROR` | Invalid API key |
-| `RATE_LIMIT` | Rate limit exceeded |
-| `CONTEXT_OVERFLOW` | Session too long |
-| `VALIDATION_ERROR` | Invalid input |
-| `SESSION_NOT_FOUND` | Session does not exist |
+| Code                 | Meaning                     |
+| -------------------- | --------------------------- |
+| `CONNECTION_ERROR`   | Service unreachable         |
+| `AUTH_ERROR`         | Invalid API key             |
+| `RATE_LIMIT`         | Rate limit exceeded         |
+| `CONTEXT_OVERFLOW`   | Session too long            |
+| `VALIDATION_ERROR`   | Invalid input               |
+| `SESSION_NOT_FOUND`  | Session does not exist      |
 | `INDEX_OUT_OF_RANGE` | Profile index out of bounds |
-| `UNKNOWN_ERROR` | Unclassified error |
+| `UNKNOWN_ERROR`      | Unclassified error          |
 
 ## Programmatic API
 
 Import `talent-agent` as a library in your TypeScript/JavaScript project:
+
+```bash
+npm install talent-agent
+```
 
 ```typescript
 import { TalentSearch } from "talent-agent";
@@ -214,7 +226,7 @@ import { TalentSearch } from "talent-agent";
 const ts = new TalentSearch();
 
 // Search
-const { result, meta } = await ts.search("Find React developers in Berlin");
+const { result, meta } = await ts.search("Find React developers in Lisbon");
 console.log(result.profiles);
 
 // Refine
@@ -228,14 +240,14 @@ const detail = await ts.detail(result.session, 0);
 
 ### Cursor
 
-Add to your Cursor MCP settings:
+Add to your Cursor MCP settings (`.cursor/mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "talent-agent": {
-      "command": "bun",
-      "args": ["run", "/path/to/talent-agent/src/index.ts", "--serve"]
+      "command": "bunx",
+      "args": ["talent-agent", "--serve"]
     }
   }
 }
@@ -249,22 +261,37 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "talent-agent": {
-      "command": "bun",
-      "args": ["run", "/path/to/talent-agent/src/index.ts", "--serve"]
+      "command": "bunx",
+      "args": ["talent-agent", "--serve"]
     }
   }
 }
 ```
 
+### Docker
+
+Run the MCP server in a container:
+
+```bash
+docker build -f docker/Dockerfile -t talent-agent .
+docker compose -f docker/docker-compose.yml up talent-agent-mcp
+```
+
 ## Environment Variables
 
-| Variable | Required | Description |
-| -------- | -------- | ----------- |
-| `TALENT_PRO_URL` | No | Talent Pro app URL (default: `https://pro.talent.app`) |
-| `TALENT_CLI_SESSION` | No | Default session ID |
-| `NO_COLOR` | No | Disable ANSI color output |
+| Variable             | Required | Description                                            |
+| -------------------- | -------- | ------------------------------------------------------ |
+| `TALENT_PRO_URL`     | No       | Talent Pro app URL (default: `https://pro.talent.app`) |
+| `TALENT_CLI_SESSION` | No       | Default session ID                                     |
+| `NO_COLOR`           | No       | Disable ANSI color output                              |
 
 ## Development
+
+```bash
+git clone https://github.com/talentprotocol/talent-agent.git
+cd talent-agent
+bun install
+```
 
 ```bash
 bun run start                    # Run the CLI
@@ -279,16 +306,11 @@ bun run format:check             # Check formatting
 
 ### Changeset Workflow
 
+This project uses [Changesets](https://github.com/changesets/changesets) for versioning and publishing.
+
 ```bash
 bun run changeset               # Create a changeset
 bun run version:packages        # Apply changesets to bump versions
-```
-
-### Docker
-
-```bash
-bun run docker:build            # Build container image
-bun run docker:serve            # Start MCP server in Docker
 ```
 
 ## Architecture
@@ -313,6 +335,17 @@ src/
     server.ts           MCP server (talent_search, talent_detail, talent_refine)
 ```
 
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b my-feature`)
+3. Make your changes and add tests
+4. Run `bun run typecheck && bun run format:check && bun run test` to verify
+5. Create a changeset (`bun run changeset`) describing your change
+6. Open a pull request
+
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE)

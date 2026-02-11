@@ -2,7 +2,7 @@
  * Single-shot mode: run a query and print results to stdout, then exit.
  *
  * Usage:
- *   talent-agent "Find React developers in Berlin"
+ *   talent-agent "Find React developers in Lisbon"
  *   talent-agent --json "Find senior Python engineers"
  *   talent-agent --session abc123 "Only show seniors"
  *   talent-agent --session abc123 --detail 0

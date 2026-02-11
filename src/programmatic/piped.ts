@@ -2,12 +2,12 @@
  * Piped JSONL mode: read queries from stdin, write results to stdout.
  *
  * Input format (one JSON object per line):
- *   {"action": "search", "query": "Find React developers in Berlin"}
+ *   {"action": "search", "query": "Find React developers in Lisbon"}
  *   {"action": "search", "query": "Only show seniors", "session": "abc123"}
  *   {"action": "detail", "session": "abc123", "index": 0}
  *
  * Legacy format (backward compatible):
- *   {"query": "Find React developers in Berlin"}
+ *   {"query": "Find React developers in Lisbon"}
  *   {"query": "Only show seniors", "session": "abc123"}
  *   {"detail": 0, "session": "abc123"}
  *

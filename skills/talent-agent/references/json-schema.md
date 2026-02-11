@@ -10,17 +10,17 @@
 {
   "action": "search",
   "id": "optional-request-id",
-  "query": "Find React developers in Berlin",
+  "query": "Find React developers in Lisbon",
   "session": "optional-session-id"
 }
 ```
 
-| Field     | Type   | Required | Description                          |
-| --------- | ------ | -------- | ------------------------------------ |
-| `action`  | string | Yes      | Must be `"search"`                   |
-| `id`      | string | No       | Request ID, echoed back in response  |
-| `query`   | string | Yes      | Natural language search query         |
-| `session` | string | No       | Session ID for refinement            |
+| Field     | Type   | Required | Description                         |
+| --------- | ------ | -------- | ----------------------------------- |
+| `action`  | string | Yes      | Must be `"search"`                  |
+| `id`      | string | No       | Request ID, echoed back in response |
+| `query`   | string | Yes      | Natural language search query       |
+| `session` | string | No       | Session ID for refinement           |
 
 #### Detail Action
 
@@ -33,12 +33,12 @@
 }
 ```
 
-| Field     | Type   | Required | Description                           |
-| --------- | ------ | -------- | ------------------------------------- |
-| `action`  | string | Yes      | Must be `"detail"`                    |
-| `id`      | string | No       | Request ID, echoed back in response   |
-| `session` | string | Yes      | Session ID from a previous search     |
-| `index`   | number | Yes      | Zero-based profile index              |
+| Field     | Type   | Required | Description                         |
+| --------- | ------ | -------- | ----------------------------------- |
+| `action`  | string | Yes      | Must be `"detail"`                  |
+| `id`      | string | No       | Request ID, echoed back in response |
+| `session` | string | Yes      | Session ID from a previous search   |
+| `index`   | number | Yes      | Zero-based profile index            |
 
 ### Legacy Format (backward compatible)
 
@@ -85,7 +85,7 @@
 {
   "type": "search",
   "session": "abc123",
-  "query": "Find React developers in Berlin",
+  "query": "Find React developers in Lisbon",
   "profiles": [
     {
       "id": "profile-id",
@@ -93,7 +93,7 @@
       "name": "Jane Doe",
       "bio": "Full-stack developer...",
       "mainRole": "Frontend Engineer",
-      "location": "Berlin, Germany",
+      "location": "Lisbon, Portugal",
       "tags": ["React", "TypeScript"],
       "githubTopLanguages": ["TypeScript", "JavaScript"],
       "githubTopFrameworks": ["React", "Next.js"],
@@ -105,8 +105,8 @@
     }
   ],
   "totalMatches": 42,
-  "summary": "Found 42 React developers in Berlin...",
-  "appliedFilters": {"languages": ["React"], "location": "Berlin"}
+  "summary": "Found 42 React developers in Lisbon...",
+  "appliedFilters": { "languages": ["React"], "location": "Lisbon" }
 }
 ```
 
@@ -120,7 +120,7 @@
     "id": "profile-id",
     "displayName": "Jane Doe",
     "mainRole": "Frontend Engineer",
-    "location": "Berlin, Germany",
+    "location": "Lisbon, Portugal",
     "bio": "...",
     "tags": ["React", "TypeScript"],
     "github": {
@@ -149,8 +149,8 @@
 
 ## Meta Object
 
-| Field         | Type     | Description                              |
-| ------------- | -------- | ---------------------------------------- |
-| `durationMs`  | number   | Total time for the agent call in ms      |
-| `tokensUsed`  | number   | Total tokens consumed by the AI model    |
-| `toolsCalled` | string[] | Names of tools invoked during the call   |
+| Field         | Type     | Description                            |
+| ------------- | -------- | -------------------------------------- |
+| `durationMs`  | number   | Total time for the agent call in ms    |
+| `tokensUsed`  | number   | Total tokens consumed by the AI model  |
+| `toolsCalled` | string[] | Names of tools invoked during the call |

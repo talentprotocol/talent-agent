@@ -30,7 +30,7 @@ export async function startMcpServer(): Promise<void> {
       query: z
         .string()
         .describe(
-          "Natural language search query, e.g. 'Find React developers in Berlin'",
+          "Natural language search query, e.g. 'Find React developers in Lisbon'",
         ),
       session: z
         .string()
@@ -89,7 +89,7 @@ export async function startMcpServer(): Promise<void> {
       query: z
         .string()
         .describe(
-          "Additional criteria or refinement query, e.g. 'Only show seniors' or 'Filter by Berlin location'",
+          "Additional criteria or refinement query, e.g. 'Only show seniors' or 'Filter by Lisbon location'",
         ),
     },
     async ({ session, query: queryText }) => {

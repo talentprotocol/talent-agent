@@ -15,7 +15,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # Define searches as an array
 SEARCHES=(
-  "Find React developers in Berlin"
+  "Find React developers in Lisbon"
   "Find senior Python engineers with ML experience"
   "Find full-stack developers who know TypeScript and Go"
   "Find iOS developers in San Francisco"
@@ -53,7 +53,7 @@ RESULT=$(talent-agent --json "Find React developers")
 SESSION=$(echo "$RESULT" | jq -r '.data.session')
 echo "Initial search session: $SESSION"
 
-REFINED=$(talent-agent --json --session "$SESSION" "Only show those in Berlin with 5+ years experience")
+REFINED=$(talent-agent --json --session "$SESSION" "Only show those in Lisbon with 5+ years experience")
 echo "Refined results:"
 echo "$REFINED" | jq '.data.profiles | length' | xargs -I{} echo "  Found {} profiles"
 

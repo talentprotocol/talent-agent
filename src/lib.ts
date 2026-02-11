@@ -7,7 +7,7 @@
  * Usage:
  *   import { TalentSearch } from "talent-agent";
  *   const ts = new TalentSearch();
- *   const result = await ts.search("Find React developers in Berlin");
+ *   const result = await ts.search("Find React developers in Lisbon");
  */
 import {
   type AgentMeta,

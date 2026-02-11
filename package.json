@@ -25,6 +25,9 @@
     "bun"
   ],
   "license": "Apache-2.0",
+  "engines": {
+    "bun": ">=1.3.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/talentprotocol/talent-agent.git"

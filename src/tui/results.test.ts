@@ -98,7 +98,7 @@ describe("createResultsPanel", () => {
           id: "p1",
           displayName: "Jane Doe",
           mainRole: "Engineer",
-          location: "Berlin",
+          location: "Lisbon",
         },
       ],
       totalMatches: 1,

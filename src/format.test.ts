@@ -25,7 +25,7 @@ describe("formatSearchResult", () => {
           id: "p1",
           displayName: "Jane Doe",
           mainRole: "Frontend Engineer",
-          location: "Berlin",
+          location: "Lisbon",
           githubTopLanguages: ["TypeScript", "JavaScript"],
         },
         {
@@ -48,7 +48,7 @@ describe("formatSearchResult", () => {
     expect(output).toContain("Jane Doe");
     expect(output).toContain("John Smith");
     expect(output).toContain("Frontend Engineer");
-    expect(output).toContain("Berlin");
+    expect(output).toContain("Lisbon");
     expect(output).toContain("test-session");
   });
 
@@ -80,7 +80,7 @@ describe("formatDetailResult", () => {
         displayName: "Jane Doe",
         name: "Jane Doe",
         mainRole: "Frontend Engineer",
-        location: "Berlin, Germany",
+        location: "Lisbon, Portugal",
         bio: "Passionate React developer.",
         tags: ["React", "TypeScript"],
         github: {
@@ -120,7 +120,7 @@ describe("formatDetailResult", () => {
 
     expect(output).toContain("Jane Doe");
     expect(output).toContain("Frontend Engineer");
-    expect(output).toContain("Berlin, Germany");
+    expect(output).toContain("Lisbon, Portugal");
     expect(output).toContain("React");
     expect(output).toContain("TypeScript");
     expect(output).toContain("GitHub");
