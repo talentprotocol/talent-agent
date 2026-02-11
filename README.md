@@ -1,5 +1,3 @@
-<div align="center">
-
 ```
 +#.
 +#.
@@ -9,8 +7,6 @@
 +#.
 -#######.
 ```
-
-</div>
 
 # talent-agent
 
