@@ -6,6 +6,8 @@
 +#.
 +#.
 -#######.
+
+Talent Agent CLI
 ```
 
 # talent-agent
