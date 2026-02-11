@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2
+
+### Patch Changes
+
+- Fix npm global install: replace direct TypeScript bin entry with a Node.js wrapper that spawns Bun, and add a postinstall message with getting-started instructions.
+
 ## 1.1.1
 
 ### Patch Changes
