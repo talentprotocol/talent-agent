@@ -10,3 +10,4 @@ bun.lock
 Thumbs.db
 coverage/
 *.log
+*.tgz
