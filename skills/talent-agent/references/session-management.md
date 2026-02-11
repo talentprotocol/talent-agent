@@ -37,7 +37,7 @@ talent-agent --json --session abc123 "Only React developers"
 # Response: 42 matches
 
 # Narrow further by location
-talent-agent --json --session abc123 "In Berlin only"
+talent-agent --json --session abc123 "In Lisbon only"
 # Response: 8 matches
 ```
 
@@ -69,7 +69,7 @@ talent-agent --session abc123 "Show more details"
 {
   "id": "abc123",
   "messages": [
-    {"role": "user", "content": "Find React developers in Berlin"},
+    {"role": "user", "content": "Find React developers in Lisbon"},
     {"role": "assistant", "content": "Found 42 matching profiles..."}
   ],
   "lastResult": {

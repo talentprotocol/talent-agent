@@ -5,7 +5,7 @@
  * A search engine for talent profiles powered by the Talent Agent.
  *
  * Usage:
- *   talent-agent "Find React developers in Berlin"        # Single-shot search
+ *   talent-agent "Find React developers in Lisbon"        # Single-shot search
  *   talent-agent --json "Find senior Python engineers"     # JSON output
  *   talent-agent --session abc "Only show seniors"         # Refine previous search
  *   talent-agent --session abc --detail 0                  # Detail on 1st result
@@ -197,7 +197,7 @@ AUTHENTICATION:
   talent-agent whoami                                 # Show current auth status
 
 SEARCH:
-  talent-agent "Find React developers in Berlin"
+  talent-agent "Find React developers in Lisbon"
   talent-agent --json "Find senior Python engineers"
   talent-agent --session abc123 "Only show those from Google"
   talent-agent --session abc123 --detail 0

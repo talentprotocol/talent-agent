@@ -119,7 +119,7 @@ export async function runTUI(): Promise<void> {
   const searchInput = new InputRenderable(renderer, {
     id: "search-input",
     placeholder:
-      'Search for talent... (e.g. "Find React developers in Berlin")',
+      'Search for talent... (e.g. "Find React developers in Lisbon")',
     width: "100%",
     backgroundColor: "#1a1b26",
     focusedBackgroundColor: "#24283b",

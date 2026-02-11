@@ -47,7 +47,7 @@ describe("buildResult", () => {
             id: "p1",
             displayName: "Jane Doe",
             mainRole: "Frontend Engineer",
-            location: "Berlin",
+            location: "Lisbon",
           },
         },
       },

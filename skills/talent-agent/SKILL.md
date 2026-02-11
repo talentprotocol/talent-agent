@@ -21,7 +21,7 @@ description: Search for talent profiles using natural language via the Talent CL
 
 ```bash
 # Basic search
-talent-agent "Find React developers in Berlin"
+talent-agent "Find React developers in Lisbon"
 
 # JSON output
 talent-agent --json "Find senior Python engineers"
@@ -42,12 +42,14 @@ echo '{"action":"search","query":"Find Rust developers","id":"req-1"}' | talent-
 ```
 
 Input schema (new format):
+
 ```json
 {"action": "search", "id": "req-1", "query": "Find React devs", "session": "optional-id"}
 {"action": "detail", "id": "req-2", "session": "abc123", "index": 0}
 ```
 
 Legacy input format (still supported):
+
 ```json
 {"query": "Find React devs"}
 {"detail": 0, "session": "abc123"}
@@ -67,7 +69,7 @@ Exposes three tools: `talent_search`, `talent_detail`, `talent_refine`.
 import { TalentSearch } from "talent-agent";
 
 const ts = new TalentSearch();
-const { result, meta } = await ts.search("Find React developers in Berlin");
+const { result, meta } = await ts.search("Find React developers in Lisbon");
 console.log(result.profiles);
 
 // Refine
@@ -87,7 +89,7 @@ RESULT=$(talent-agent --json "Find Python developers")
 SESSION=$(echo "$RESULT" | jq -r '.data.session')
 
 # Refine with the session
-talent-agent --json --session "$SESSION" "Only show those in Berlin"
+talent-agent --json --session "$SESSION" "Only show those in Lisbon"
 ```
 
 ### Debug Mode
@@ -110,6 +112,7 @@ talent-agent "Only show seniors"  # Uses abc123 session automatically
 All JSON and pipe output uses a standard envelope:
 
 **Success:**
+
 ```json
 {
   "success": true,
@@ -119,6 +122,7 @@ All JSON and pipe output uses a standard envelope:
 ```
 
 **Error:**
+
 ```json
 {
   "success": false,
@@ -129,13 +133,13 @@ All JSON and pipe output uses a standard envelope:
 
 ## Error Codes
 
-| Code               | Meaning                          |
-| ------------------ | -------------------------------- |
-| CONNECTION_ERROR   | Service unreachable              |
-| AUTH_ERROR         | Invalid API key                  |
-| RATE_LIMIT         | Rate limit exceeded              |
-| CONTEXT_OVERFLOW   | Session too long                 |
-| VALIDATION_ERROR   | Invalid input                    |
-| SESSION_NOT_FOUND  | Session does not exist           |
-| INDEX_OUT_OF_RANGE | Profile index out of bounds      |
-| UNKNOWN_ERROR      | Unclassified error               |
+| Code               | Meaning                     |
+| ------------------ | --------------------------- |
+| CONNECTION_ERROR   | Service unreachable         |
+| AUTH_ERROR         | Invalid API key             |
+| RATE_LIMIT         | Rate limit exceeded         |
+| CONTEXT_OVERFLOW   | Session too long            |
+| VALIDATION_ERROR   | Invalid input               |
+| SESSION_NOT_FOUND  | Session does not exist      |
+| INDEX_OUT_OF_RANGE | Profile index out of bounds |
+| UNKNOWN_ERROR      | Unclassified error          |

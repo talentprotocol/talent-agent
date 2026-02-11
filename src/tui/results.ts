@@ -173,7 +173,7 @@ export function createResultsPanel(renderer: CliRenderer) {
     box.add(
       new TextRenderable(renderer, {
         id: uid("w3"),
-        content: t`${dim('Example: "Find React developers in Berlin"')}`,
+        content: t`${dim('Example: "Find React developers in Lisbon"')}`,
       }),
     );
     container.add(box);
