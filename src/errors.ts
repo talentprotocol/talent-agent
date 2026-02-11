@@ -56,7 +56,8 @@ export function toAIFriendlyError(error: unknown): {
     };
   if (msg.includes("403") || msg.includes("Pro organization required"))
     return {
-      message: "Pro organization required. Your account may not have access.",
+      message:
+        "Pro subscription required. Subscribe at https://pro.talent.app/pricing or check your organization's billing status.",
       code: "AUTH_ERROR",
     };
   if (msg.includes("rate_limit"))
