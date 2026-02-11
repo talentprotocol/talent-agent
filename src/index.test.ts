@@ -58,7 +58,7 @@ describe("CLI --help", () => {
   it("prints help text and exits with 0", () => {
     const { stdout, exitCode } = runCli(["--help"]);
 
-    expect(stdout).toContain("Talent Search CLI");
+    expect(stdout).toContain("Talent Agent CLI");
     expect(stdout).toContain("USAGE:");
     expect(stdout).toContain("OPTIONS:");
     expect(stdout).toContain("--json");
@@ -74,7 +74,7 @@ describe("CLI --help", () => {
   it("supports -h shorthand", () => {
     const { stdout, exitCode } = runCli(["-h"]);
 
-    expect(stdout).toContain("Talent Search CLI");
+    expect(stdout).toContain("Talent Agent CLI");
     expect(exitCode).toBe(0);
   });
 });

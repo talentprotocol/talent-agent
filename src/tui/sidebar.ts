@@ -1,18 +1,20 @@
 /**
  * Search history sidebar for the TUI.
  *
- * Displays a list of past searches with result counts.
- * Supports keyboard navigation (Up/Down/Enter) to revisit previous searches.
+ * Displays a scrollable list of past searches with result counts.
+ * Supports keyboard navigation (Up/Down/j/k/Enter) to revisit searches.
  */
 import {
   BoxRenderable,
   type CliRenderer,
+  ScrollBoxRenderable,
   TextRenderable,
   bold,
-  dim,
   fg,
   t,
 } from "@opentui/core";
+
+import { theme } from "./theme";
 
 export interface SearchHistoryEntry {
   sessionId: string;
@@ -45,29 +47,49 @@ export function createSidebar(
     flexShrink: 0,
     flexDirection: "column",
     borderStyle: "rounded",
-    borderColor: "#444444",
+    borderColor: theme.border,
     title: " History ",
     titleAlignment: "left",
   });
 
-  function render(): void {
-    // Remove all existing children
-    for (const child of container.getChildren()) {
-      container.remove(child.id);
+  // Scrollable area for history entries
+  const scrollBox = new ScrollBoxRenderable(renderer, {
+    id: "sidebar-scroll",
+    width: "100%",
+    flexGrow: 1,
+  });
+  container.add(scrollBox);
+
+  // Track IDs added to scrollBox for safe cleanup
+  const contentIds: string[] = [];
+
+  function addContent(child: BoxRenderable | TextRenderable): void {
+    scrollBox.add(child);
+    contentIds.push(child.id);
+  }
+
+  function clearContent(): void {
+    for (const id of contentIds) {
+      scrollBox.remove(id);
     }
+    contentIds.length = 0;
+  }
+
+  function render(): void {
+    clearContent();
 
     if (state.entries.length === 0) {
-      container.add(
+      addContent(
         new TextRenderable(renderer, {
           id: "sidebar-empty-1",
-          content: t`${dim("  No searches yet")}`,
+          content: t`${fg(theme.fgMuted)("  No searches yet")}`,
           marginTop: 1,
         }),
       );
-      container.add(
+      addContent(
         new TextRenderable(renderer, {
           id: "sidebar-empty-2",
-          content: t`${dim("  Type a query below")}`,
+          content: t`${fg(theme.fgMuted)("  Type a query below")}`,
         }),
       );
       return;
@@ -85,35 +107,41 @@ export function createSidebar(
         flexDirection: "row",
         paddingLeft: 1,
         paddingRight: 1,
-        backgroundColor: isSelected ? "#2a3a5a" : undefined,
+        backgroundColor: isSelected ? theme.bgSecondary : undefined,
       });
 
       row.add(
         new TextRenderable(renderer, {
           id: `sidebar-marker-${i}`,
           content: isSelected ? "▸ " : "  ",
-          fg: "#7aa2f7",
+          fg: theme.fgSecondary,
         }),
       );
 
       row.add(
         new TextRenderable(renderer, {
           id: `sidebar-query-${i}`,
-          content: t`${isSelected ? bold(fg("#c0caf5")(queryTrunc)) : fg("#a9b1d6")(queryTrunc)}`,
+          content: t`${isSelected ? bold(fg(theme.fg)(queryTrunc)) : fg(theme.fgSecondary)(queryTrunc)}`,
           flexGrow: 1,
         }),
       );
 
-      row.add(
-        new TextRenderable(renderer, {
-          id: `sidebar-count-${i}`,
-          content: t`${dim(`(${entry.resultCount})`)}`,
-          marginLeft: 1,
-        }),
-      );
+      // Only show result count when available (not for API-loaded entries)
+      if (entry.resultCount > 0) {
+        row.add(
+          new TextRenderable(renderer, {
+            id: `sidebar-count-${i}`,
+            content: t`${fg(theme.fgMuted)(`(${entry.resultCount})`)}`,
+            marginLeft: 1,
+          }),
+        );
+      }
 
-      container.add(row);
+      addContent(row);
     }
+
+    // Scroll to keep selected item visible
+    scrollBox.scrollTo(Math.max(0, state.selectedIndex - 2));
   }
 
   // Initial render
@@ -121,6 +149,7 @@ export function createSidebar(
 
   return {
     container,
+    scrollBox,
     update: () => render(),
     moveUp: () => {
       if (state.entries.length === 0) return;

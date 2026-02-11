@@ -3,7 +3,7 @@
  *
  * The TUI app is heavily dependent on @opentui/core for rendering and
  * keyboard input. We mock the entire renderer to test the application
- * logic (focus management, search execution, detail navigation).
+ * logic (focus management, search execution, slash commands).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,7 @@ import { getDetail as mockGetDetail, query as mockQuery } from "../agent";
 vi.mock("../agent", () => ({
   query: vi.fn(),
   getDetail: vi.fn(),
+  fetchRecentSessions: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock the auth store and flows (TUI checks auth on startup)
@@ -50,6 +51,19 @@ vi.mock("@opentui/core", () => {
     }
   }
 
+  class ScrollBoxRenderable {
+    id: string;
+    add = vi.fn();
+    remove = vi.fn();
+    getChildren = vi.fn(() => []);
+    scrollTo = vi.fn();
+    scrollBy = vi.fn();
+    focus = vi.fn();
+    constructor(_renderer: any, opts: any) {
+      this.id = opts.id;
+    }
+  }
+
   class TextRenderable {
     id: string;
     content: any;
@@ -80,10 +94,12 @@ vi.mock("@opentui/core", () => {
 
   const InputRenderableEvents = {
     ENTER: "enter",
+    INPUT: "input",
   };
 
   return {
     BoxRenderable,
+    ScrollBoxRenderable,
     TextRenderable,
     InputRenderable,
     InputRenderableEvents,
@@ -130,7 +146,16 @@ describe("runTUI", () => {
             add: vi.fn(),
             remove: vi.fn(),
             getChildren: vi.fn(() => []),
-            borderColor: "#444444",
+            borderColor: "#262626",
+          },
+          scrollBox: {
+            id: "sidebar-scroll",
+            add: vi.fn(),
+            remove: vi.fn(),
+            getChildren: vi.fn(() => []),
+            scrollTo: vi.fn(),
+            scrollBy: vi.fn(),
+            focus: vi.fn(),
           },
           update: vi.fn(),
           moveUp: vi.fn(() => {
@@ -159,10 +184,21 @@ describe("runTUI", () => {
               add: vi.fn(),
               remove: vi.fn(),
               getChildren: vi.fn(() => []),
+              borderColor: "#262626",
+            },
+            scrollBox: {
+              id: "results-scroll",
+              add: vi.fn(),
+              remove: vi.fn(),
+              getChildren: vi.fn(() => []),
+              scrollTo: vi.fn(),
+              scrollBy: vi.fn(),
+              focus: vi.fn(),
             },
             update: vi.fn((newState: any) => {
               Object.assign(currentState, newState);
             }),
+            showHelp: vi.fn(),
             getState: vi.fn(() => currentState),
           }) as any,
       );
@@ -189,12 +225,13 @@ describe("runTUI", () => {
     expect(keyHandlers.length).toBeGreaterThan(0);
   });
 
-  it("registers input ENTER handler", async () => {
+  it("registers input ENTER and INPUT handlers", async () => {
     const { runTUI } = await import("./app");
     await runTUI();
 
-    // Should have registered an ENTER handler on the input
+    // Should have registered ENTER and INPUT handlers on the input
     expect(inputHandlers.has("enter")).toBe(true);
+    expect(inputHandlers.has("input")).toBe(true);
   });
 
   it("starts with input focused", async () => {
