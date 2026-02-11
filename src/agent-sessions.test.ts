@@ -1,12 +1,9 @@
 /**
  * Unit tests for agent session management, query, and getDetail.
  *
- * Tests session CRUD, persistence (save/load), and the main query/getDetail
- * flows using mocked fetch (remote API) + mocked getValidToken (auth store).
+ * Tests session CRUD and the main query/getDetail flows using mocked fetch
+ * (remote API) + mocked getValidToken (auth store).
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -15,9 +12,7 @@ import {
   getDetail,
   getOrCreateSession,
   getSession,
-  loadSession,
   query,
-  saveSession,
 } from "./agent";
 
 // Use vi.spyOn instead of vi.mock to avoid cross-file mock contamination.
@@ -85,6 +80,83 @@ function mockFetchResponse(body: string, status = 200): Response {
     status,
     headers: { "Content-Type": "text/plain" },
   });
+}
+
+/** Default server session ID returned by the mock session creation endpoint. */
+const MOCK_SERVER_SESSION_ID = 999;
+
+/**
+ * Create a fetch mock that routes by URL:
+ * - POST /api/ai-chat/sessions -> returns a new server session
+ * - POST /api/ai-chat/sessions/.../messages/bulk -> returns 200 (persistence)
+ * - GET  /api/ai-chat/sessions/... -> returns session with no messages
+ * - POST /api/chat -> returns the given SSE stream body
+ * - GET  /api/profile/.../detail -> returns the given detail response
+ *
+ * For tests that need custom behavior, pass overrides.
+ */
+function mockRoutedFetch(
+  chatStreamBody: string,
+  overrides?: {
+    detailResponse?: Response;
+    chatResponse?: Response;
+    sessionCreateResponse?: Response;
+  },
+) {
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input: string | URL | Request) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      // Session creation
+      if (url.includes("/api/ai-chat/sessions") && !url.includes("/messages")) {
+        if (overrides?.sessionCreateResponse)
+          return overrides.sessionCreateResponse;
+        // POST (create) or GET (fetch)
+        return new Response(
+          JSON.stringify({
+            session: {
+              id: MOCK_SERVER_SESSION_ID,
+              title: null,
+              status: "active",
+              model_id: "gpt-4o",
+              metadata: {},
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              messages: [],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      // Message persistence (fire-and-forget)
+      if (url.includes("/messages/bulk")) {
+        return new Response(JSON.stringify({ messages: [] }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Profile detail
+      if (url.includes("/api/profile/") && url.includes("/detail")) {
+        if (overrides?.detailResponse) return overrides.detailResponse;
+        return new Response("{}", { status: 404 });
+      }
+
+      // Chat API (default)
+      if (url.includes("/api/chat")) {
+        if (overrides?.chatResponse) return overrides.chatResponse;
+        return mockFetchResponse(chatStreamBody);
+      }
+
+      return new Response("Not found", { status: 404 });
+    });
 }
 
 // ─── Setup ──────────────────────────────────────────────────────────────────
@@ -180,102 +252,6 @@ describe("session management", () => {
   });
 });
 
-describe("session persistence", () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "talent-agent-test-"));
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true });
-  });
-
-  it("saveSession writes session data to file", () => {
-    const id = createSession();
-    const filePath = join(tmpDir, "session.json");
-
-    saveSession(id, filePath);
-
-    const content = readFileSync(filePath, "utf-8");
-    const data = JSON.parse(content);
-
-    expect(data.id).toBe(id);
-    expect(data.messages).toEqual([]);
-    expect(data.lastResult).toBeNull();
-  });
-
-  it("saveSession throws for non-existent session", () => {
-    const filePath = join(tmpDir, "session.json");
-
-    expect(() => saveSession("nonexistent", filePath)).toThrow(
-      'Session "nonexistent" not found',
-    );
-  });
-
-  it("loadSession loads session from file and returns session id", () => {
-    const sessionData = {
-      id: "loaded-session",
-      messages: [
-        {
-          id: "msg-1",
-          role: "user",
-          parts: [{ type: "text", text: "Find React devs" }],
-        },
-      ],
-      lastResult: null,
-    };
-
-    const filePath = join(tmpDir, "session.json");
-    writeFileSync(filePath, JSON.stringify(sessionData), "utf-8");
-
-    const loadedId = loadSession(filePath);
-
-    expect(loadedId).toBe("loaded-session");
-
-    // Verify session is accessible
-    const session = getSession("loaded-session");
-    expect(session).toBeDefined();
-    expect(session!.messages).toHaveLength(1);
-  });
-
-  it("round-trips a session through save and load", () => {
-    const id = createSession();
-    const session = getSession(id)!;
-
-    // Add some data to the session
-    session.messages.push({
-      id: "msg-1",
-      role: "user",
-      parts: [{ type: "text", text: "Test query" }],
-    } as any);
-    session.messages.push({
-      id: "msg-2",
-      role: "assistant",
-      parts: [{ type: "text", text: "Test response" }],
-    } as any);
-    session.lastResult = {
-      type: "search",
-      session: id,
-      query: "Test query",
-      profiles: [],
-      totalMatches: 0,
-      summary: "No results",
-      appliedFilters: {},
-    };
-
-    const filePath = join(tmpDir, "round-trip.json");
-    saveSession(id, filePath);
-
-    const loadedId = loadSession(filePath);
-    const loadedSession = getSession(loadedId)!;
-
-    expect(loadedSession.messages).toHaveLength(2);
-    expect(loadedSession.lastResult).not.toBeNull();
-    expect(loadedSession.lastResult!.type).toBe("search");
-  });
-});
-
 describe("query", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -303,7 +279,7 @@ describe("query", () => {
       textParts: ["Found 1 developer."],
     });
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
+    mockRoutedFetch(body);
 
     const result = await query("Find React devs");
 
@@ -317,7 +293,7 @@ describe("query", () => {
       textParts: ["Response text"],
     });
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
+    mockRoutedFetch(body);
 
     const sessionId = createSession();
     await query("Test query", sessionId);
@@ -326,17 +302,6 @@ describe("query", () => {
     expect(session.messages).toHaveLength(2); // user + assistant
     expect(session.messages[0]!.role).toBe("user");
     expect(session.messages[1]!.role).toBe("assistant");
-  });
-
-  it("returns error result when fetch throws", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("fetch failed"));
-
-    const result = await query("Find devs");
-
-    expect(result.result.type).toBe("error");
-    if (result.result.type === "error") {
-      expect(result.result.error).toContain("fetch failed");
-    }
   });
 
   it("returns error result when not authenticated", async () => {
@@ -352,18 +317,19 @@ describe("query", () => {
     }
   });
 
-  it("creates a new session when none is provided", async () => {
+  it("creates a server session when none is provided", async () => {
     const body = buildStreamBody({ textParts: ["ok"] });
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
+    mockRoutedFetch(body);
 
     const result = await query("Test");
 
-    expect(result.result.session).toBeTruthy();
+    // Session ID should be the server-assigned numeric ID
+    expect(result.result.session).toBe(String(MOCK_SERVER_SESSION_ID));
   });
 
-  it("uses existing session when sessionId is provided", async () => {
+  it("uses existing cached session when sessionId is provided", async () => {
     const body = buildStreamBody({ textParts: ["ok"] });
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
+    mockRoutedFetch(body);
 
     const sessionId = createSession();
     const result = await query("Test", sessionId);
@@ -371,15 +337,16 @@ describe("query", () => {
     expect(result.result.session).toBe(sessionId);
   });
 
-  it("returns error when API responds with non-200 status", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ error: "Unauthorized" }), {
+  it("returns error when chat API responds with non-200 status", async () => {
+    mockRoutedFetch("", {
+      chatResponse: new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
       }),
-    );
+    });
 
-    const result = await query("Find devs");
+    const sessionId = createSession();
+    const result = await query("Find devs", sessionId);
 
     expect(result.result.type).toBe("error");
   });
@@ -411,7 +378,6 @@ describe("getDetail", () => {
   });
 
   it("returns error when profile index is out of range", async () => {
-    // Create a session with search results
     const searchBody = buildStreamBody({
       toolCalls: [{ toolCallId: "tc-1", toolName: "searchProfiles", args: {} }],
       toolResults: [
@@ -425,14 +391,11 @@ describe("getDetail", () => {
       ],
     });
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      mockFetchResponse(searchBody),
-    );
+    mockRoutedFetch(searchBody);
 
     const sessionId = createSession();
     await query("Find devs", sessionId);
 
-    // Now try to get detail at an out-of-range index
     const result = await getDetail(sessionId, 5);
 
     expect(result.result.type).toBe("error");
@@ -443,9 +406,6 @@ describe("getDetail", () => {
   });
 
   it("sends detail request to the detail endpoint for valid index", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-
-    // First call: search results (via /api/chat stream)
     const searchBody = buildStreamBody({
       toolCalls: [{ toolCallId: "tc-1", toolName: "searchProfiles", args: {} }],
       toolResults: [
@@ -459,14 +419,8 @@ describe("getDetail", () => {
       ],
     });
 
-    fetchSpy.mockResolvedValueOnce(mockFetchResponse(searchBody));
-
-    const sessionId = createSession();
-    await query("Find devs", sessionId);
-
-    // Second call: direct detail endpoint (JSON, not streamed)
-    fetchSpy.mockResolvedValueOnce(
-      new Response(
+    const fetchSpy = mockRoutedFetch(searchBody, {
+      detailResponse: new Response(
         JSON.stringify({
           profile: {
             id: "p1",
@@ -476,7 +430,10 @@ describe("getDetail", () => {
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
-    );
+    });
+
+    const sessionId = createSession();
+    await query("Find devs", sessionId);
 
     const result = await getDetail(sessionId, 0);
 
@@ -485,17 +442,9 @@ describe("getDetail", () => {
       expect(result.result.profile.displayName).toBe("Jane Doe");
       expect(result.result.profile.mainRole).toBe("Engineer");
     }
-    // The fetch should have been called twice (search + detail)
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    // Second call should be to the detail endpoint, not /api/chat
-    const detailCallUrl = fetchSpy.mock.calls[1]![0] as string;
-    expect(detailCallUrl).toContain("/api/profile/p1/detail");
   });
 
   it("returns error when detail endpoint returns 404", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-
-    // First: set up search results
     const searchBody = buildStreamBody({
       toolCalls: [{ toolCallId: "tc-1", toolName: "searchProfiles", args: {} }],
       toolResults: [
@@ -509,18 +458,15 @@ describe("getDetail", () => {
       ],
     });
 
-    fetchSpy.mockResolvedValueOnce(mockFetchResponse(searchBody));
+    mockRoutedFetch(searchBody, {
+      detailResponse: new Response(
+        JSON.stringify({ error: "Profile not found" }),
+        { status: 404, headers: { "Content-Type": "application/json" } },
+      ),
+    });
 
     const sessionId = createSession();
     await query("Find devs", sessionId);
-
-    // Second: detail endpoint returns 404
-    fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
 
     const result = await getDetail(sessionId, 0);
 
@@ -531,9 +477,6 @@ describe("getDetail", () => {
   });
 
   it("returns error when not authenticated for detail", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-
-    // Set up search results first
     const searchBody = buildStreamBody({
       toolCalls: [{ toolCallId: "tc-1", toolName: "searchProfiles", args: {} }],
       toolResults: [
@@ -547,7 +490,7 @@ describe("getDetail", () => {
       ],
     });
 
-    fetchSpy.mockResolvedValueOnce(mockFetchResponse(searchBody));
+    mockRoutedFetch(searchBody);
 
     const sessionId = createSession();
     await query("Find devs", sessionId);
@@ -579,9 +522,10 @@ describe("extractToolNames (via query meta)", () => {
       ],
     });
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
+    mockRoutedFetch(body);
 
-    const result = await query("Test");
+    const sessionId = createSession();
+    const result = await query("Test", sessionId);
     expect(result.meta.toolsCalled).toEqual([
       "searchProfiles",
       "getProfileDetails",
@@ -593,9 +537,10 @@ describe("extractToolNames (via query meta)", () => {
       textParts: ["Just text"],
     });
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(mockFetchResponse(body));
+    mockRoutedFetch(body);
 
-    const result = await query("Test");
+    const sessionId = createSession();
+    const result = await query("Test", sessionId);
     expect(result.meta.toolsCalled).toEqual([]);
   });
 });

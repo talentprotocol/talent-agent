@@ -4,16 +4,15 @@
  * Each flow prompts the user in the terminal, calls the Talent Protocol API,
  * and stores the resulting credentials.
  */
+import { createServer } from "node:http";
 import { createInterface } from "node:readline";
 
 import {
   createAuthToken,
-  createCliSession,
   createNonce,
   emailRequestCode,
   emailVerifyCode,
   getCliAuthUrl,
-  pollCliSession,
 } from "./client";
 import {
   type AuthMethod,
@@ -79,8 +78,7 @@ export async function runEmailFlow(): Promise<StoredCredentials> {
 
 // ─── Google Auth Flow ───────────────────────────────────────────────────────
 
-const POLL_INTERVAL_MS = 2_000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
+const CALLBACK_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
 
 function openBrowser(url: string): void {
   const command =
@@ -98,47 +96,105 @@ function openBrowser(url: string): void {
   }
 }
 
+/**
+ * Start the callback server and return both the port and a promise
+ * that resolves when the credentials arrive.
+ */
+function startCallbackServer(): Promise<{
+  port: number;
+  credentials: Promise<{ token: string; expiresAt: number }>;
+}> {
+  return new Promise((resolveStartup, rejectStartup) => {
+    let callbackResolve: (value: { token: string; expiresAt: number }) => void;
+    let callbackReject: (reason: Error) => void;
+
+    const credentials = new Promise<{ token: string; expiresAt: number }>(
+      (res, rej) => {
+        callbackResolve = res;
+        callbackReject = rej;
+      },
+    );
+
+    const timeout = setTimeout(() => {
+      server.close();
+      callbackReject(
+        new Error("Google authentication timed out after 5 minutes."),
+      );
+    }, CALLBACK_TIMEOUT_MS);
+
+    const server = createServer((req, res) => {
+      const url = new URL(req.url ?? "/", `http://localhost`);
+
+      if (url.pathname !== "/callback") {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+
+      const token = url.searchParams.get("token");
+      const expiresAtStr = url.searchParams.get("expires_at");
+
+      if (!token || !expiresAtStr) {
+        res.writeHead(400);
+        res.end("Missing token or expires_at");
+        return;
+      }
+
+      // Respond with a success page
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<!DOCTYPE html>
+<html><head><title>Talent CLI</title></head>
+<body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
+<div style="text-align:center">
+<h2>Authentication Successful</h2>
+<p style="color:#666">You can close this tab and return to your terminal.</p>
+</div>
+</body></html>`);
+
+      clearTimeout(timeout);
+      server.close();
+      callbackResolve({ token, expiresAt: Number(expiresAtStr) });
+    });
+
+    server.listen(0, "127.0.0.1");
+    server.on("listening", () => {
+      const addr = server.address() as { port: number };
+      resolveStartup({ port: addr.port, credentials });
+    });
+    server.on("error", (err) => {
+      clearTimeout(timeout);
+      rejectStartup(
+        new Error(`Failed to start callback server: ${err.message}`),
+      );
+    });
+  });
+}
+
 export async function runGoogleFlow(): Promise<StoredCredentials> {
   printToStderr("Starting Google authentication...");
 
-  // 1. Create a CLI auth session on the server
-  const { sessionId } = await createCliSession();
+  // 1. Start a temporary localhost server to receive the OAuth callback
+  const { port, credentials } = await startCallbackServer();
 
   // 2. Open the browser to the CLI login page on talent-pro
-  const authUrl = `${getCliAuthUrl()}/auth/cli?session_id=${sessionId}`;
+  const authUrl = `${getCliAuthUrl()}/auth/cli?callback_port=${port}`;
   printToStderr("A browser window will open for you to sign in with Google.");
   openBrowser(authUrl);
   printToStderr(`\nIf the browser didn't open, visit:\n${authUrl}\n`);
   printToStderr("Waiting for authentication...");
 
-  // 3. Poll for the result
-  const startTime = Date.now();
+  // 3. Wait for the browser to redirect back with the token
+  const { token, expiresAt } = await credentials;
 
-  while (Date.now() - startTime < POLL_TIMEOUT_MS) {
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  const creds: StoredCredentials = {
+    token,
+    expiresAt,
+    authMethod: "google",
+  };
 
-    const result = await pollCliSession(sessionId);
-
-    if (result.status === "complete" && result.auth) {
-      const creds: StoredCredentials = {
-        token: result.auth.token,
-        expiresAt: result.auth.expires_at,
-        authMethod: "google",
-      };
-
-      saveCredentials(creds);
-      printToStderr("Authenticated with Google");
-      return creds;
-    }
-
-    if (result.status === "expired") {
-      throw new Error("Authentication session expired. Please try again.");
-    }
-
-    // status === "pending" — keep polling
-  }
-
-  throw new Error("Google authentication timed out after 5 minutes.");
+  saveCredentials(creds);
+  printToStderr("Authenticated with Google");
+  return creds;
 }
 
 // ─── Wallet (SIWE) Auth Flow ────────────────────────────────────────────────

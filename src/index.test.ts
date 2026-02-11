@@ -109,26 +109,3 @@ describe("CLI unknown flags", () => {
     expect(exitCode).toBe(2);
   });
 });
-
-describe("CLI session subcommand validation", () => {
-  it("exits with code 2 for invalid session subcommand", () => {
-    const { stderr, exitCode } = runCli(["session"]);
-
-    expect(stderr).toContain("Usage: talent-agent session");
-    expect(exitCode).toBe(2);
-  });
-
-  it("exits with code 2 for session save without enough args", () => {
-    const { stderr, exitCode } = runCli(["session", "save"]);
-
-    expect(stderr).toContain("Usage: talent-agent session");
-    expect(exitCode).toBe(2);
-  });
-
-  it("exits with code 2 for session load without path", () => {
-    const { stderr, exitCode } = runCli(["session", "load"]);
-
-    expect(stderr).toContain("Usage: talent-agent session");
-    expect(exitCode).toBe(2);
-  });
-});

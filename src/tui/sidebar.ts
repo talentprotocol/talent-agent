@@ -30,6 +30,7 @@ export interface SidebarState {
 
 export interface SidebarCallbacks {
   onSelect: (entry: SearchHistoryEntry) => void;
+  onNewChat: () => void;
 }
 
 /**
@@ -78,6 +79,42 @@ export function createSidebar(
   function render(): void {
     clearContent();
 
+    // "New Chat" action row (always at index 0)
+    const isNewChatSelected = state.selectedIndex === 0;
+    const newChatRow = new BoxRenderable(renderer, {
+      id: "sidebar-new-chat",
+      width: "100%",
+      flexDirection: "row",
+      paddingLeft: 1,
+      paddingRight: 1,
+      backgroundColor: isNewChatSelected ? theme.bgSecondary : undefined,
+    });
+    newChatRow.add(
+      new TextRenderable(renderer, {
+        id: "sidebar-new-chat-marker",
+        content: isNewChatSelected ? "▸ " : "  ",
+        fg: theme.fgSecondary,
+      }),
+    );
+    newChatRow.add(
+      new TextRenderable(renderer, {
+        id: "sidebar-new-chat-label",
+        content: t`${isNewChatSelected ? bold(fg(theme.fg)("+ New Chat")) : fg(theme.fgSecondary)("+ New Chat")}`,
+        flexGrow: 1,
+      }),
+    );
+    addContent(newChatRow);
+
+    // Separator between "New Chat" and history entries
+    if (state.entries.length > 0) {
+      addContent(
+        new TextRenderable(renderer, {
+          id: "sidebar-sep",
+          content: t`${fg(theme.border)(" ─".repeat(12))}`,
+        }),
+      );
+    }
+
     if (state.entries.length === 0) {
       addContent(
         new TextRenderable(renderer, {
@@ -97,7 +134,8 @@ export function createSidebar(
 
     for (let i = 0; i < state.entries.length; i++) {
       const entry = state.entries[i]!;
-      const isSelected = i === state.selectedIndex;
+      // Offset by 1 because index 0 is "New Chat"
+      const isSelected = i + 1 === state.selectedIndex;
       const queryTrunc =
         entry.query.length > 20 ? entry.query.slice(0, 19) + "…" : entry.query;
 
@@ -152,20 +190,24 @@ export function createSidebar(
     scrollBox,
     update: () => render(),
     moveUp: () => {
-      if (state.entries.length === 0) return;
       state.selectedIndex = Math.max(0, state.selectedIndex - 1);
       render();
     },
     moveDown: () => {
-      if (state.entries.length === 0) return;
+      // Max index = entries.length (0 = New Chat, 1..N = history entries)
       state.selectedIndex = Math.min(
-        state.entries.length - 1,
+        state.entries.length,
         state.selectedIndex + 1,
       );
       render();
     },
     select: () => {
-      const entry = state.entries[state.selectedIndex];
+      if (state.selectedIndex === 0) {
+        callbacks.onNewChat();
+        return;
+      }
+      // Offset by 1 for history entries
+      const entry = state.entries[state.selectedIndex - 1];
       if (entry) callbacks.onSelect(entry);
     },
     getState: () => state,

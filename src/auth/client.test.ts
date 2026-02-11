@@ -12,12 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createAuthToken,
-  createCliSession,
   createNonce,
   emailRequestCode,
   emailVerifyCode,
   getCliAuthUrl,
-  pollCliSession,
   refreshAuthToken,
 } from "./client";
 
@@ -126,75 +124,6 @@ describe("emailVerifyCode", () => {
     await expect(emailVerifyCode("user@example.com", "000000")).rejects.toThrow(
       "Invalid code",
     );
-  });
-});
-
-describe("createCliSession", () => {
-  it("creates a session and returns sessionId", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(JSON.stringify({ sessionId: "abc123" }), { status: 200 }),
-      );
-
-    const result = await createCliSession();
-
-    expect(result.sessionId).toBe("abc123");
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://pro.talent.app/api/auth/cli/sessions",
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
-  it("throws on failure", async () => {
-    mockFetchError(500, { error: "Internal server error" });
-
-    await expect(createCliSession()).rejects.toThrow("Internal server error");
-  });
-});
-
-describe("pollCliSession", () => {
-  it("returns pending status", async () => {
-    mockFetchOk({ status: "pending" });
-
-    const result = await pollCliSession("session-123");
-
-    expect(result.status).toBe("pending");
-  });
-
-  it("returns complete status with auth data", async () => {
-    const response = {
-      status: "complete",
-      auth: { token: "google-jwt", expires_at: 1700000000 },
-    };
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(JSON.stringify(response), { status: 200 }),
-      );
-
-    const result = await pollCliSession("session-123");
-
-    expect(result.status).toBe("complete");
-    expect(result.auth?.token).toBe("google-jwt");
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://pro.talent.app/api/auth/cli/sessions/session-123",
-      expect.objectContaining({ method: "GET" }),
-    );
-  });
-
-  it("returns expired status", async () => {
-    mockFetchOk({ status: "expired" });
-
-    const result = await pollCliSession("session-123");
-
-    expect(result.status).toBe("expired");
-  });
-
-  it("throws on failure", async () => {
-    mockFetchError(500, { error: "Server error" });
-
-    await expect(pollCliSession("session-123")).rejects.toThrow("Server error");
   });
 });
 
