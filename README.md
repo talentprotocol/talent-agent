@@ -18,6 +18,10 @@ Talent Agent CLI
 
 AI-powered talent profile search using natural language. CLI tool with interactive TUI, JSON output, pipe mode, and MCP server.
 
+<p align="center">
+  <img src="assets/terminal.png" alt="Talent Agent TUI" width="720" />
+</p>
+
 ## Installation
 
 ### Prerequisites
