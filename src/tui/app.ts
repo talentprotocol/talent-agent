@@ -1,30 +1,33 @@
 /**
  * Main TUI application.
  *
- * Two-column layout:
+ * Three-panel layout:
  *   Left:   Search history sidebar
- *   Right:  Profile results table / detail view
- *   Bottom: Search input bar
+ *   Right:  Profile results table / detail view (scrollable)
+ *   Bottom: Status bar + search input
  *
  * Keyboard:
- *   Tab         - Switch focus between sidebar and search input
- *   Up/Down     - Navigate sidebar entries (when sidebar focused)
+ *   Tab         - Cycle focus: input -> results -> sidebar
+ *   j/k, Up/Dn - Navigate (sidebar selection, results scroll)
  *   Enter       - Submit search / select sidebar entry
- *   d + digit   - Show detail for profile at that index
- *   Esc         - Back to results from detail view / unfocus sidebar
- *   q / Ctrl+C  - Quit
+ *   0-9         - Show detail for profile at that index (outside input)
+ *   Esc         - Back to results from detail view / return to input
+ *   q / Ctrl+C  - Quit (when input is not focused)
+ *
+ * Slash commands (typed in the input):
+ *   /help, /h       - Show help
+ *   /detail n, /d n - View profile at index n
+ *   /clear          - Clear results and history
+ *   /quit, /q       - Exit
  */
 import {
   BoxRenderable,
   InputRenderable,
   InputRenderableEvents,
   type KeyEvent,
-  SelectRenderable,
-  SelectRenderableEvents,
   TextRenderable,
   bold,
   createCliRenderer,
-  dim,
   fg,
   t,
 } from "@opentui/core";
@@ -32,6 +35,7 @@ import {
 import {
   type AgentResult,
   type SearchResult,
+  fetchRecentSessions,
   getDetail as rawGetDetail,
   query as rawQuery,
 } from "../agent";
@@ -43,6 +47,7 @@ import {
   type SidebarState,
   createSidebar,
 } from "./sidebar";
+import { initTheme, theme } from "./theme";
 
 /** Unwrap the { result, meta } envelope from agent calls for TUI usage. */
 async function query(input: string, sessionId?: string): Promise<AgentResult> {
@@ -59,6 +64,10 @@ async function getDetail(
 }
 
 export async function runTUI(): Promise<void> {
+  // ─── Detect Terminal Color Scheme ─────────────────────────────────────────
+
+  initTheme();
+
   // ─── Auth Check ──────────────────────────────────────────────────────────
 
   const token = await getValidToken();
@@ -82,6 +91,16 @@ export async function runTUI(): Promise<void> {
     console.log(""); // blank line before TUI
   }
 
+  // ─── Load Recent Chat Sessions ─────────────────────────────────────────────
+
+  const recentSessions = await fetchRecentSessions();
+  const initialEntries: SearchHistoryEntry[] = recentSessions.map((s) => ({
+    sessionId: s.sessionId,
+    query: s.title,
+    resultCount: 0,
+    timestamp: s.updatedAt,
+  }));
+
   // ─── Initialize TUI ─────────────────────────────────────────────────────
 
   const renderer = await createCliRenderer({
@@ -90,14 +109,13 @@ export async function runTUI(): Promise<void> {
 
   // ─── State ─────────────────────────────────────────────────────────────────
 
-  type FocusTarget = "input" | "sidebar";
+  type FocusTarget = "input" | "results" | "sidebar";
   let currentFocus: FocusTarget = "input";
-  let pendingDetail = false; // waiting for digit after 'd'
 
   // ─── Search History Sidebar ────────────────────────────────────────────────
 
   const sidebarState: SidebarState = {
-    entries: [],
+    entries: initialEntries,
     selectedIndex: 0,
   };
 
@@ -119,13 +137,39 @@ export async function runTUI(): Promise<void> {
   const searchInput = new InputRenderable(renderer, {
     id: "search-input",
     placeholder:
-      'Search for talent... (e.g. "Find React developers in Lisbon")',
+      'Search for talent... (e.g. "React devs in Lisbon") or type / for commands',
     width: "100%",
-    backgroundColor: "#1a1b26",
-    focusedBackgroundColor: "#24283b",
-    textColor: "#c0caf5",
-    cursorColor: "#7aa2f7",
+    backgroundColor: theme.bg,
+    focusedBackgroundColor: theme.bgCard,
+    textColor: theme.fg,
+    cursorColor: theme.fg,
   });
+
+  // ─── Status Bar ───────────────────────────────────────────────────────────
+
+  const muted = fg(theme.fgMuted);
+
+  const statusBar = new TextRenderable(renderer, {
+    id: "status-bar",
+    content: t`${muted("Type to search or / for commands")}`,
+    paddingLeft: 1,
+    paddingRight: 1,
+  });
+
+  function updateStatusBar(text: string): void {
+    statusBar.content = t`${muted(text)}`;
+  }
+
+  function getStatusHint(): string {
+    switch (currentFocus) {
+      case "input":
+        return "Type to search or / for commands    Tab: switch panel";
+      case "results":
+        return "j/k: scroll    0-9: detail    Esc: back    Tab: switch panel";
+      case "sidebar":
+        return "j/k: navigate    Enter: select    Tab: switch panel";
+    }
+  }
 
   // ─── Layout ────────────────────────────────────────────────────────────────
 
@@ -138,18 +182,18 @@ export async function runTUI(): Promise<void> {
     justifyContent: "space-between",
     paddingLeft: 1,
     paddingRight: 1,
-    backgroundColor: "#1a1b26",
+    backgroundColor: theme.bgCard,
   });
   titleBar.add(
     new TextRenderable(renderer, {
       id: "title-text",
-      content: t`${bold(fg("#7dcfff")("Talent Search"))}`,
+      content: t`${fg(theme.blue)("█▄")} ${fg(theme.blue)("█▄")} ${bold(fg(theme.fg)("Talent Agent"))}`,
     }),
   );
   titleBar.add(
     new TextRenderable(renderer, {
       id: "title-hints",
-      content: t`${dim("[Tab] switch  [q] quit")}`,
+      content: t`${muted("[Tab] switch  [/] commands  [q] quit")}`,
     }),
   );
 
@@ -159,6 +203,7 @@ export async function runTUI(): Promise<void> {
     flexDirection: "row",
     flexGrow: 1,
     width: "100%",
+    gap: 1,
   });
   content.add(sidebar.container);
   content.add(resultsPanel.container);
@@ -169,7 +214,7 @@ export async function runTUI(): Promise<void> {
     width: "100%",
     height: 3,
     borderStyle: "rounded",
-    borderColor: "#7aa2f7",
+    borderColor: theme.borderFocus,
     title: " Query ",
     titleAlignment: "left",
   });
@@ -181,9 +226,11 @@ export async function runTUI(): Promise<void> {
     width: "100%",
     height: "100%",
     flexDirection: "column",
+    gap: 1,
   });
   root.add(titleBar);
   root.add(content);
+  root.add(statusBar);
   root.add(inputBar);
 
   renderer.root.add(root);
@@ -192,19 +239,77 @@ export async function runTUI(): Promise<void> {
 
   function setFocus(target: FocusTarget): void {
     currentFocus = target;
-    if (target === "input") {
-      searchInput.focus();
-      sidebar.container.borderColor = "#444444";
-      inputBar.borderColor = "#7aa2f7";
-    } else {
-      searchInput.blur();
-      sidebar.container.borderColor = "#7aa2f7";
-      inputBar.borderColor = "#444444";
+
+    // Reset all borders to unfocused
+    sidebar.container.borderColor = theme.border;
+    resultsPanel.container.borderColor = theme.border;
+    inputBar.borderColor = theme.border;
+
+    // Highlight the focused panel
+    switch (target) {
+      case "input":
+        searchInput.focus();
+        inputBar.borderColor = theme.borderFocus;
+        break;
+      case "results":
+        searchInput.blur();
+        resultsPanel.container.borderColor = theme.borderFocus;
+        resultsPanel.scrollBox.focus();
+        break;
+      case "sidebar":
+        searchInput.blur();
+        sidebar.container.borderColor = theme.borderFocus;
+        break;
     }
+
+    updateStatusBar(getStatusHint());
   }
 
   // Start with input focused
   setFocus("input");
+
+  // ─── Slash Commands ───────────────────────────────────────────────────────
+
+  function handleSlashCommand(input: string): void {
+    const parts = input.slice(1).trim().split(/\s+/);
+    const cmd = parts[0]?.toLowerCase() ?? "";
+    const args = parts.slice(1);
+
+    switch (cmd) {
+      case "help":
+      case "h":
+        resultsPanel.showHelp();
+        break;
+
+      case "detail":
+      case "d": {
+        const idx = parseInt(args[0] ?? "", 10);
+        if (isNaN(idx)) {
+          updateStatusBar("Usage: /detail <number>  e.g. /detail 3");
+          return;
+        }
+        showDetail(idx);
+        break;
+      }
+
+      case "clear":
+        sidebarState.entries.length = 0;
+        sidebarState.selectedIndex = 0;
+        sidebar.update();
+        resultsPanel.update({ result: null, loading: false });
+        updateStatusBar("Cleared results and history");
+        break;
+
+      case "quit":
+      case "q":
+        process.exit(0);
+        break;
+
+      default:
+        updateStatusBar(`Unknown command: /${cmd}  Type /help for commands`);
+        break;
+    }
+  }
 
   // ─── Search Execution ──────────────────────────────────────────────────────
 
@@ -248,7 +353,12 @@ export async function runTUI(): Promise<void> {
     if (!currentResult || currentResult.type !== "search") return;
 
     const profile = currentResult.profiles[profileIndex];
-    if (!profile) return;
+    if (!profile) {
+      updateStatusBar(
+        `No profile at index ${profileIndex}. Range: 0-${currentResult.profiles.length - 1}`,
+      );
+      return;
+    }
 
     resultsPanel.update({
       loading: true,
@@ -275,34 +385,42 @@ export async function runTUI(): Promise<void> {
   searchInput.on(InputRenderableEvents.ENTER, async (value: string) => {
     if (!value.trim()) return;
     searchInput.value = "";
+
+    // Handle slash commands
+    if (value.startsWith("/")) {
+      handleSlashCommand(value);
+      return;
+    }
+
     await executeSearch(value);
+  });
+
+  // Show command hints when typing "/"
+  searchInput.on(InputRenderableEvents.INPUT, (value: string) => {
+    if (value.startsWith("/")) {
+      updateStatusBar("/help  /detail <n>  /clear  /quit");
+    } else if (currentFocus === "input") {
+      updateStatusBar(getStatusHint());
+    }
   });
 
   // ─── Global Keyboard Handler ───────────────────────────────────────────────
 
   renderer.keyInput.on("keypress", async (key: KeyEvent) => {
-    // Handle pending detail request (d + digit)
-    if (pendingDetail) {
-      pendingDetail = false;
-      const digit = parseInt(key.name, 10);
-      if (!isNaN(digit)) {
-        await showDetail(digit);
-        return;
-      }
-    }
-
     // Quit (only when not typing in input)
     if (key.name === "q" && currentFocus !== "input") {
       process.exit(0);
     }
 
-    // Tab: switch focus
+    // Tab: cycle focus (input -> results -> sidebar -> input)
     if (key.name === "tab") {
-      setFocus(currentFocus === "input" ? "sidebar" : "input");
+      const order: FocusTarget[] = ["input", "results", "sidebar"];
+      const idx = order.indexOf(currentFocus);
+      setFocus(order[(idx + 1) % order.length]!);
       return;
     }
 
-    // Escape: go back to list / unfocus sidebar
+    // Escape: go back to list / return to input
     if (key.name === "escape") {
       const state = resultsPanel.getState();
       if (state.result?.type === "detail") {
@@ -318,13 +436,15 @@ export async function runTUI(): Promise<void> {
       return;
     }
 
-    // Sidebar navigation (only when sidebar is focused)
+    // Sidebar navigation (when sidebar is focused)
     if (currentFocus === "sidebar") {
       switch (key.name) {
         case "up":
+        case "k":
           sidebar.moveUp();
           return;
         case "down":
+        case "j":
           sidebar.moveDown();
           return;
         case "return":
@@ -333,10 +453,27 @@ export async function runTUI(): Promise<void> {
       }
     }
 
-    // Detail shortcut: 'd' triggers detail mode (waits for next digit)
-    if (key.name === "d" && currentFocus !== "input") {
-      pendingDetail = true;
-      return;
+    // Results navigation (when results is focused)
+    if (currentFocus === "results") {
+      switch (key.name) {
+        case "up":
+        case "k":
+          resultsPanel.scrollBox.scrollBy(-1);
+          return;
+        case "down":
+        case "j":
+          resultsPanel.scrollBox.scrollBy(1);
+          return;
+      }
+    }
+
+    // Number keys for quick detail access (when not typing in input)
+    if (currentFocus !== "input") {
+      const digit = parseInt(key.name, 10);
+      if (!isNaN(digit)) {
+        await showDetail(digit);
+        return;
+      }
     }
   });
 }

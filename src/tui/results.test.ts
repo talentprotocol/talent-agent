@@ -26,6 +26,19 @@ vi.mock("@opentui/core", () => {
     }
   }
 
+  class ScrollBoxRenderable {
+    id: string;
+    add = vi.fn();
+    remove = vi.fn();
+    getChildren = vi.fn(() => []);
+    scrollTo = vi.fn();
+    scrollBy = vi.fn();
+    focus = vi.fn();
+    constructor(_renderer: any, opts: any) {
+      this.id = opts.id;
+    }
+  }
+
   class TextRenderable {
     id: string;
     content: any;
@@ -37,6 +50,7 @@ vi.mock("@opentui/core", () => {
 
   return {
     BoxRenderable,
+    ScrollBoxRenderable,
     TextRenderable,
     bold: (s: any) => s,
     dim: (s: any) => s,
@@ -52,11 +66,13 @@ describe("createResultsPanel", () => {
     vi.clearAllMocks();
   });
 
-  it("returns container, update, and getState", () => {
+  it("returns container, scrollBox, update, showHelp, and getState", () => {
     const panel = createResultsPanel(mockRenderer);
 
     expect(panel.container).toBeDefined();
+    expect(panel.scrollBox).toBeDefined();
     expect(typeof panel.update).toBe("function");
+    expect(typeof panel.showHelp).toBe("function");
     expect(typeof panel.getState).toBe("function");
   });
 
@@ -71,9 +87,9 @@ describe("createResultsPanel", () => {
   it("renders welcome screen when result is null", () => {
     const panel = createResultsPanel(mockRenderer);
 
-    // Initial render already happens in createResultsPanel
-    // The welcome screen should have been rendered via container.add
+    // Initial render adds the scrollBox to container, then content to scrollBox
     expect(panel.container.add).toHaveBeenCalled();
+    expect(panel.scrollBox.add).toHaveBeenCalled();
   });
 
   it("updates state on update call", () => {
@@ -149,18 +165,12 @@ describe("createResultsPanel", () => {
     expect(state.result?.type).toBe("error");
   });
 
-  it("clears children before each render", () => {
+  it("clears scrollBox content before each render", () => {
     const panel = createResultsPanel(mockRenderer);
 
-    // Setup: make getChildren return mock children for removal
-    const child1 = { id: "child-1" };
-    const child2 = { id: "child-2" };
-    (panel.container.getChildren as any).mockReturnValue([child1, child2]);
-
-    // Update triggers re-render which should clear children first
+    // scrollBox.remove is called to clear content on each update
     panel.update({ loading: true });
 
-    // container.remove should have been called to clear existing children
-    expect(panel.container.remove).toHaveBeenCalled();
+    expect(panel.scrollBox.remove).toHaveBeenCalled();
   });
 });

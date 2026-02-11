@@ -29,6 +29,19 @@ vi.mock("@opentui/core", () => {
     }
   }
 
+  class ScrollBoxRenderable {
+    id: string;
+    add = vi.fn();
+    remove = vi.fn();
+    getChildren = vi.fn(() => []);
+    scrollTo = vi.fn();
+    scrollBy = vi.fn();
+    focus = vi.fn();
+    constructor(_renderer: any, opts: any) {
+      this.id = opts.id;
+    }
+  }
+
   class TextRenderable {
     id: string;
     content: any;
@@ -40,6 +53,7 @@ vi.mock("@opentui/core", () => {
 
   return {
     BoxRenderable,
+    ScrollBoxRenderable,
     TextRenderable,
     bold: (s: any) => s,
     dim: (s: any) => s,
@@ -62,12 +76,13 @@ describe("createSidebar", () => {
     };
   });
 
-  it("returns container and control methods", () => {
+  it("returns container, scrollBox, and control methods", () => {
     const sidebar = createSidebar(mockRenderer, state, {
       onSelect: onSelectMock,
     });
 
     expect(sidebar.container).toBeDefined();
+    expect(sidebar.scrollBox).toBeDefined();
     expect(typeof sidebar.update).toBe("function");
     expect(typeof sidebar.moveUp).toBe("function");
     expect(typeof sidebar.moveDown).toBe("function");
@@ -80,8 +95,8 @@ describe("createSidebar", () => {
       onSelect: onSelectMock,
     });
 
-    // Should have rendered empty state text via container.add
-    expect(sidebar.container.add).toHaveBeenCalled();
+    // Should have rendered empty state text via scrollBox.add
+    expect(sidebar.scrollBox.add).toHaveBeenCalled();
   });
 
   it("returns state reference", () => {
@@ -278,7 +293,7 @@ describe("createSidebar", () => {
       });
 
       // Clear mock calls from initial render
-      (sidebar.container.add as any).mockClear();
+      (sidebar.scrollBox.add as any).mockClear();
 
       // Add an entry and update
       state.entries.push({
@@ -290,8 +305,8 @@ describe("createSidebar", () => {
 
       sidebar.update();
 
-      // Should have re-rendered (add was called again)
-      expect(sidebar.container.add).toHaveBeenCalled();
+      // Should have re-rendered (scrollBox.add was called again)
+      expect(sidebar.scrollBox.add).toHaveBeenCalled();
     });
   });
 });

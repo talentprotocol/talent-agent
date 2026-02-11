@@ -30,7 +30,7 @@ let toAIFriendlyErrorSpy: ReturnType<typeof vi.spyOn> | undefined;
 
 /**
  * Build a fake AI SDK UI message stream body string.
- * Format: TYPE_CODE:JSON_DATA per line.
+ * Format: SSE with "data: {JSON}" lines.
  */
 function buildStreamBody(parts: {
   textParts?: string[];
@@ -40,19 +40,34 @@ function buildStreamBody(parts: {
 }): string {
   const lines: string[] = [];
 
+  lines.push(`data: ${JSON.stringify({ type: "start" })}`);
+  lines.push(`data: ${JSON.stringify({ type: "start-step" })}`);
+
   for (const tc of parts.toolCalls ?? []) {
-    lines.push(`9:${JSON.stringify(tc)}`);
-  }
-  for (const text of parts.textParts ?? []) {
-    lines.push(`0:${JSON.stringify(text)}`);
+    lines.push(
+      `data: ${JSON.stringify({ type: "tool-input-available", toolCallId: tc.toolCallId, toolName: tc.toolName, input: tc.args })}`,
+    );
   }
   for (const tr of parts.toolResults ?? []) {
-    lines.push(`a:${JSON.stringify(tr)}`);
+    lines.push(
+      `data: ${JSON.stringify({ type: "tool-output-available", toolCallId: tr.toolCallId, output: tr.result })}`,
+    );
+  }
+  for (const text of parts.textParts ?? []) {
+    lines.push(
+      `data: ${JSON.stringify({ type: "text-delta", id: "0", delta: text })}`,
+    );
   }
   if (parts.error) {
-    lines.push(`3:${JSON.stringify(parts.error)}`);
+    lines.push(
+      `data: ${JSON.stringify({ type: "error", message: parts.error })}`,
+    );
   }
-  lines.push(`d:${JSON.stringify({ finishReason: "stop" })}`);
+  lines.push(`data: ${JSON.stringify({ type: "finish-step" })}`);
+  lines.push(
+    `data: ${JSON.stringify({ type: "finish", finishReason: "stop" })}`,
+  );
+  lines.push("data: [DONE]");
 
   return lines.join("\n") + "\n";
 }
@@ -202,7 +217,11 @@ describe("session persistence", () => {
     const sessionData = {
       id: "loaded-session",
       messages: [
-        { role: "user", parts: [{ type: "text", text: "Find React devs" }] },
+        {
+          id: "msg-1",
+          role: "user",
+          parts: [{ type: "text", text: "Find React devs" }],
+        },
       ],
       lastResult: null,
     };
@@ -226,10 +245,12 @@ describe("session persistence", () => {
 
     // Add some data to the session
     session.messages.push({
+      id: "msg-1",
       role: "user",
       parts: [{ type: "text", text: "Test query" }],
     } as any);
     session.messages.push({
+      id: "msg-2",
       role: "assistant",
       parts: [{ type: "text", text: "Test response" }],
     } as any);
@@ -421,10 +442,10 @@ describe("getDetail", () => {
     }
   });
 
-  it("sends detail request to agent for valid index", async () => {
+  it("sends detail request to the detail endpoint for valid index", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    // First call: search results
+    // First call: search results (via /api/chat stream)
     const searchBody = buildStreamBody({
       toolCalls: [{ toolCallId: "tc-1", toolName: "searchProfiles", args: {} }],
       toolResults: [
@@ -443,37 +464,105 @@ describe("getDetail", () => {
     const sessionId = createSession();
     await query("Find devs", sessionId);
 
-    // Second call: detail response
-    const detailBody = buildStreamBody({
-      toolCalls: [
-        {
-          toolCallId: "tc-2",
-          toolName: "getProfileDetails",
-          args: { profileId: "p1" },
-        },
-      ],
+    // Second call: direct detail endpoint (JSON, not streamed)
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          profile: {
+            id: "p1",
+            displayName: "Jane Doe",
+            mainRole: "Engineer",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const result = await getDetail(sessionId, 0);
+
+    expect(result.result.type).toBe("detail");
+    if (result.result.type === "detail") {
+      expect(result.result.profile.displayName).toBe("Jane Doe");
+      expect(result.result.profile.mainRole).toBe("Engineer");
+    }
+    // The fetch should have been called twice (search + detail)
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // Second call should be to the detail endpoint, not /api/chat
+    const detailCallUrl = fetchSpy.mock.calls[1]![0] as string;
+    expect(detailCallUrl).toContain("/api/profile/p1/detail");
+  });
+
+  it("returns error when detail endpoint returns 404", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    // First: set up search results
+    const searchBody = buildStreamBody({
+      toolCalls: [{ toolCallId: "tc-1", toolName: "searchProfiles", args: {} }],
       toolResults: [
         {
-          toolCallId: "tc-2",
+          toolCallId: "tc-1",
           result: {
-            success: true,
-            profile: {
-              id: "p1",
-              displayName: "Jane Doe",
-              mainRole: "Engineer",
-            },
+            profiles: [{ id: "p1", displayName: "Jane Doe" }],
+            totalMatches: 1,
           },
         },
       ],
     });
 
-    fetchSpy.mockResolvedValueOnce(mockFetchResponse(detailBody));
+    fetchSpy.mockResolvedValueOnce(mockFetchResponse(searchBody));
+
+    const sessionId = createSession();
+    await query("Find devs", sessionId);
+
+    // Second: detail endpoint returns 404
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "Profile not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
 
     const result = await getDetail(sessionId, 0);
 
-    expect(result.result.type).toBe("detail");
-    // The fetch should have been called twice (search + detail)
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(result.result.type).toBe("error");
+    if (result.result.type === "error") {
+      expect(result.result.error).toContain("Profile not found");
+    }
+  });
+
+  it("returns error when not authenticated for detail", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    // Set up search results first
+    const searchBody = buildStreamBody({
+      toolCalls: [{ toolCallId: "tc-1", toolName: "searchProfiles", args: {} }],
+      toolResults: [
+        {
+          toolCallId: "tc-1",
+          result: {
+            profiles: [{ id: "p1", displayName: "Jane Doe" }],
+            totalMatches: 1,
+          },
+        },
+      ],
+    });
+
+    fetchSpy.mockResolvedValueOnce(mockFetchResponse(searchBody));
+
+    const sessionId = createSession();
+    await query("Find devs", sessionId);
+
+    // Now mock token as null for the detail call
+    const { getValidToken } = await import("./auth/store");
+    (getValidToken as any).mockResolvedValueOnce(null);
+
+    const result = await getDetail(sessionId, 0);
+
+    expect(result.result.type).toBe("error");
+    if (result.result.type === "error") {
+      expect(result.result.error).toContain("Not authenticated");
+      expect(result.result.code).toBe("AUTH_ERROR");
+    }
   });
 });
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Talent Search CLI
+ * Talent Agent CLI
  *
  * A search engine for talent profiles powered by the Talent Agent.
  *
@@ -183,7 +183,7 @@ function parseArgs(): CliArgs {
 
 function printHelp(): void {
   console.log(`
-Talent Search CLI - Search for talent profiles using natural language
+Talent Agent CLI - Search for talent profiles using natural language
 
 USAGE:
   talent-agent [OPTIONS] [QUERY]

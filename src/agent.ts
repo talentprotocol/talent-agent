@@ -140,7 +140,7 @@ interface UIMessagePart {
 }
 
 interface UIMessage {
-  id?: string;
+  id: string;
   role: "user" | "assistant" | "system";
   parts: UIMessagePart[];
 }
@@ -229,12 +229,14 @@ function getTalentProUrl(): string {
 /**
  * Parse the AI SDK UI message stream response.
  *
- * The createAgentUIStreamResponse produces a streaming response where each line
- * is formatted as TYPE_CODE:JSON_DATA. We parse these to extract:
- * - Text parts (type 0)
- * - Tool calls (type 9)
- * - Tool results (type a)
- * - Finish metadata (type d/e)
+ * The server returns Server-Sent Events (SSE) where each line is formatted as:
+ *   data: {JSON_OBJECT}
+ *
+ * Event types we extract:
+ * - text-delta: text content deltas
+ * - tool-input-available: complete tool call with input
+ * - tool-output-available: tool result with output
+ * - error: error messages
  */
 interface ParsedStreamResult {
   textParts: string[];
@@ -280,60 +282,60 @@ async function parseUIMessageStream(
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        // AI SDK stream format: TYPE_CODE:JSON_DATA
-        const colonIndex = trimmed.indexOf(":");
-        if (colonIndex === -1) continue;
+        // SSE format: "data: {JSON}" or "data: [DONE]"
+        if (!trimmed.startsWith("data: ")) continue;
+        const payload = trimmed.slice(6); // Strip "data: " prefix
 
-        const typeCode = trimmed.slice(0, colonIndex);
-        const jsonData = trimmed.slice(colonIndex + 1);
+        // End-of-stream sentinel
+        if (payload === "[DONE]") continue;
 
         try {
-          switch (typeCode) {
-            case "0": {
-              // Text delta
-              const text = JSON.parse(jsonData) as string;
-              if (text) result.textParts.push(text);
+          const event = JSON.parse(payload) as Record<string, unknown>;
+          const eventType = event.type as string;
+
+          switch (eventType) {
+            case "text-delta": {
+              const delta = event.delta as string;
+              if (delta) result.textParts.push(delta);
               break;
             }
-            case "9": {
-              // Tool call
-              const toolCall = JSON.parse(jsonData) as {
-                toolCallId: string;
-                toolName: string;
-                args: unknown;
-              };
-              result.toolCalls.push(toolCall);
-              toolCallIdToName.set(toolCall.toolCallId, toolCall.toolName);
-              break;
-            }
-            case "a": {
-              // Tool result
-              const toolResult = JSON.parse(jsonData) as {
-                toolCallId: string;
-                result: unknown;
-              };
-              const toolName =
-                toolCallIdToName.get(toolResult.toolCallId) || "unknown";
-              result.toolResults.push({
-                toolCallId: toolResult.toolCallId,
+            case "tool-input-available": {
+              // Complete tool call with parsed input
+              const toolCallId = event.toolCallId as string;
+              const toolName = event.toolName as string;
+              const input = event.input;
+              result.toolCalls.push({
+                toolCallId,
                 toolName,
-                result: toolResult.result,
+                args: input,
+              });
+              toolCallIdToName.set(toolCallId, toolName);
+              break;
+            }
+            case "tool-output-available": {
+              // Tool result with output
+              const toolCallId = event.toolCallId as string;
+              const output = event.output;
+              const toolName = toolCallIdToName.get(toolCallId) || "unknown";
+              result.toolResults.push({
+                toolCallId,
+                toolName,
+                result: output,
               });
               break;
             }
-            case "3": {
-              // Error
-              const errorMsg = JSON.parse(jsonData) as string;
-              result.error = errorMsg;
+            case "error": {
+              const errorMsg = event.message as string;
+              if (errorMsg) result.error = errorMsg;
               break;
             }
-            // Type codes d (finish_message), e (finish_step), f (usage) etc. are informational
+            // Ignore: start, start-step, finish-step, finish,
+            // text-start, text-end, tool-input-start, tool-input-delta
             default:
-              // Ignore other type codes
               break;
           }
         } catch {
-          // Skip lines that can't be parsed
+          // Skip lines that can't be parsed as JSON
         }
       }
     }
@@ -341,17 +343,18 @@ async function parseUIMessageStream(
     // Process any remaining buffer
     if (buffer.trim()) {
       const trimmed = buffer.trim();
-      const colonIndex = trimmed.indexOf(":");
-      if (colonIndex !== -1) {
-        const typeCode = trimmed.slice(0, colonIndex);
-        const jsonData = trimmed.slice(colonIndex + 1);
-        try {
-          if (typeCode === "0") {
-            const text = JSON.parse(jsonData) as string;
-            if (text) result.textParts.push(text);
+      if (trimmed.startsWith("data: ")) {
+        const payload = trimmed.slice(6);
+        if (payload !== "[DONE]") {
+          try {
+            const event = JSON.parse(payload) as Record<string, unknown>;
+            if (event.type === "text-delta") {
+              const delta = event.delta as string;
+              if (delta) result.textParts.push(delta);
+            }
+          } catch {
+            // Ignore
           }
-        } catch {
-          // Ignore
         }
       }
     }
@@ -513,6 +516,7 @@ export async function query(
 
   // Build the user message in AI SDK UIMessage format
   const userMessage: UIMessage = {
+    id: nanoid(),
     role: "user",
     parts: [{ type: "text", text: input }],
   };
@@ -552,31 +556,13 @@ export async function query(
       );
     }
 
-    // Store assistant response in session history
-    const assistantParts: UIMessagePart[] = [];
-    if (textResponse) {
-      assistantParts.push({ type: "text", text: textResponse });
-    }
-    for (const tc of streamResult.toolCalls) {
-      assistantParts.push({
-        type: "tool-call",
-        toolCallId: tc.toolCallId,
-        toolName: tc.toolName,
-        args: tc.args as Record<string, unknown>,
-      });
-    }
-    for (const tr of streamResult.toolResults) {
-      assistantParts.push({
-        type: "tool-result",
-        toolCallId: tr.toolCallId,
-        toolName: tr.toolName,
-        state: "output-available",
-        output: tr.result,
-      });
-    }
+    // Store assistant response in session history.
+    // Only keep text parts — tool-call/tool-result parts are ephemeral and
+    // the server rejects them on subsequent requests (requires "data-" prefix).
     session.messages.push({
+      id: nanoid(),
       role: "assistant",
-      parts: assistantParts,
+      parts: textResponse ? [{ type: "text", text: textResponse }] : [],
     });
 
     // Build structured result from tool outputs
@@ -619,11 +605,14 @@ export async function query(
 
 /**
  * Get detail for a profile by index from the last search result in a session.
+ *
+ * Calls the talent-pro detail endpoint directly instead of going through
+ * the LLM chat flow, avoiding unnecessary token usage and latency.
  */
 export async function getDetail(
   sessionId: string,
   profileIndex: number,
-  options?: QueryOptions,
+  _options?: QueryOptions,
 ): Promise<{ result: AgentResult; meta: AgentMeta }> {
   const session = sessions.get(sessionId);
   if (!session?.lastResult || session.lastResult.type !== "search") {
@@ -651,12 +640,136 @@ export async function getDetail(
     };
   }
 
-  // Ask the agent to get profile details
-  return query(
-    `Show me the full profile details for ${profile.displayName || profile.name || profile.id} (ID: ${profile.id})`,
-    sessionId,
-    options,
-  );
+  const token = await getValidToken();
+  if (!token) {
+    return {
+      result: {
+        type: "error",
+        session: sessionId,
+        error: "Not authenticated. Run 'talent-agent login' first.",
+        code: "AUTH_ERROR",
+      },
+      meta: { durationMs: 0, tokensUsed: 0, toolsCalled: [] },
+    };
+  }
+
+  const startTime = performance.now();
+
+  try {
+    const proUrl = getTalentProUrl();
+    const response = await fetch(
+      `${proUrl}/api/profile/${encodeURIComponent(profile.id)}/detail`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    const durationMs = Math.round(performance.now() - startTime);
+
+    if (!response.ok) {
+      let errorMessage = `Detail API error: ${response.status}`;
+      try {
+        const body = (await response.json()) as { error?: string };
+        if (body.error) errorMessage = body.error;
+      } catch {
+        // Use default error message
+      }
+
+      const errResult: ErrorResult = {
+        type: "error",
+        session: sessionId,
+        error: errorMessage,
+      };
+      session.lastResult = errResult;
+      return {
+        result: errResult,
+        meta: { durationMs, tokensUsed: 0, toolsCalled: [] },
+      };
+    }
+
+    const body = (await response.json()) as { profile: DetailedProfile };
+
+    const detailResult: DetailResult = {
+      type: "detail",
+      session: sessionId,
+      profile: body.profile,
+      summary: "",
+    };
+    session.lastResult = detailResult;
+
+    return {
+      result: detailResult,
+      meta: {
+        durationMs,
+        tokensUsed: 0,
+        toolsCalled: ["getProfileDetails"],
+      },
+    };
+  } catch (error) {
+    const durationMs = Math.round(performance.now() - startTime);
+    const friendly = toAIFriendlyError(error);
+
+    const errResult: ErrorResult = {
+      type: "error",
+      session: sessionId,
+      error: friendly.message,
+      code: friendly.code,
+    };
+    session.lastResult = errResult;
+
+    return {
+      result: errResult,
+      meta: { durationMs, tokensUsed: 0, toolsCalled: [] },
+    };
+  }
+}
+
+// ─── Recent Sessions (for TUI History) ──────────────────────────────────────
+
+/** Shape of a session from the /api/ai-chat/sessions response. */
+interface AiChatSessionSummary {
+  id: number;
+  title: string | null;
+  updated_at: string;
+}
+
+/**
+ * Fetch the user's recent AI chat sessions from talent-pro.
+ *
+ * Returns an array of lightweight session summaries suitable for populating
+ * the TUI sidebar history. Returns an empty array on any failure.
+ */
+export async function fetchRecentSessions(
+  count = 10,
+): Promise<Array<{ sessionId: string; title: string; updatedAt: Date }>> {
+  try {
+    const token = await getValidToken();
+    if (!token) return [];
+
+    const proUrl = getTalentProUrl();
+    const response = await fetch(
+      `${proUrl}/api/ai-chat/sessions?page=1&per_page=${count}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+
+    if (!response.ok) return [];
+
+    const body = (await response.json()) as {
+      sessions: AiChatSessionSummary[];
+    };
+
+    return (body.sessions ?? []).map((s) => ({
+      sessionId: String(s.id),
+      title: s.title ?? "Untitled chat",
+      updatedAt: new Date(s.updated_at),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /**

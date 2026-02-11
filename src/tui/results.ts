@@ -1,15 +1,15 @@
 /**
  * Results panel for the TUI.
  *
- * Renders profile search results as a formatted table, or a detailed
- * profile card when in detail view mode. Uses Renderables for dynamic updates.
+ * Renders profile search results in a scrollable table, or a detailed
+ * profile card when in detail view. Uses ScrollBox for content scrolling.
  */
 import {
   BoxRenderable,
   type CliRenderer,
+  ScrollBoxRenderable,
   TextRenderable,
   bold,
-  dim,
   fg,
   t,
 } from "@opentui/core";
@@ -20,21 +20,25 @@ import type {
   ProfileSummary,
   SearchResult,
 } from "../agent";
+import { theme } from "./theme";
 
-// ─── Colors ──────────────────────────────────────────────────────────────────
+// ─── Colors ─────────────────────────────────────────────────────────────────
 
-const COL = {
-  name: "#9ece6a", // green
-  role: "#c0caf5", // white
-  location: "#7aa2f7", // blue
-  lang: "#bb9af7", // magenta
-  dim: "#565f89", // gray
-  accent: "#7dcfff", // cyan
-  warn: "#e0af68", // yellow
-  header: "#c0caf5", // white
-  error: "#f7768e", // red
-  linkedin: "#0a66c2", // linkedin blue
-} as const;
+/** Resolve semantic color map from the active theme (must be called after initTheme). */
+function resolveColors() {
+  return {
+    name: theme.success, // profile names
+    role: theme.fg, // role / title text
+    location: theme.blue, // location labels
+    lang: theme.violet, // languages & tags
+    dim: theme.fgMuted, // muted / secondary info
+    accent: theme.blue, // section headers & accents
+    warn: theme.warning, // index numbers
+    header: theme.fg, // table column headers
+    error: theme.destructive, // error messages
+    linkedin: theme.linkedin, // LinkedIn brand blue
+  } as const;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -79,9 +83,12 @@ export interface ResultsState {
 
 /**
  * Create the results panel.
- * Uses BoxRenderable so children can be dynamically replaced on update.
+ * Uses a ScrollBox inside a bordered container for scrollable content.
  */
 export function createResultsPanel(renderer: CliRenderer) {
+  // Resolve colors from the active theme (already initialized by initTheme)
+  const COL = resolveColors();
+
   const state: ResultsState = { result: null, loading: false };
   let idCounter = 0;
 
@@ -95,16 +102,41 @@ export function createResultsPanel(renderer: CliRenderer) {
     flexGrow: 1,
     flexDirection: "column",
     borderStyle: "rounded",
-    borderColor: "#444444",
+    borderColor: theme.border,
     title: " Results ",
     titleAlignment: "left",
     overflow: "hidden",
   });
 
+  // Scrollable content area
+  const scrollBox = new ScrollBoxRenderable(renderer, {
+    id: "results-scroll",
+    width: "100%",
+    flexGrow: 1,
+    viewportCulling: true,
+    scrollbarOptions: {
+      trackOptions: {
+        foregroundColor: theme.fgMuted,
+        backgroundColor: theme.bgCard,
+      },
+    },
+  });
+  container.add(scrollBox);
+
+  // Track IDs added to scrollBox for safe cleanup
+  const contentIds: string[] = [];
+
+  function addContent(child: BoxRenderable | TextRenderable): void {
+    scrollBox.add(child);
+    contentIds.push(child.id);
+  }
+
   function clearContent(): void {
-    for (const child of container.getChildren()) {
-      container.remove(child.id);
+    for (const id of contentIds) {
+      scrollBox.remove(id);
     }
+    contentIds.length = 0;
+    scrollBox.scrollTo(0);
   }
 
   function render(): void {
@@ -146,7 +178,7 @@ export function createResultsPanel(renderer: CliRenderer) {
         content: t`${fg(COL.accent)("⟳")} ${state.loadingMessage || "Searching..."}`,
       }),
     );
-    container.add(box);
+    addContent(box);
   }
 
   function renderWelcome(): void {
@@ -158,25 +190,193 @@ export function createResultsPanel(renderer: CliRenderer) {
       flexDirection: "column",
       gap: 1,
     });
+
+    // ASCII logo (Talent double-L mark)
+    const logoBox = new BoxRenderable(renderer, {
+      id: uid("w-logo"),
+      flexDirection: "column",
+      alignItems: "center",
+    });
+    const logoLines = [
+      " ██        ",
+      " ██▄▄▄▄▄▄▄ ",
+      " ██        ",
+      " ██▄▄▄▄▄▄▄ ",
+    ];
+    for (const line of logoLines) {
+      logoBox.add(
+        new TextRenderable(renderer, {
+          id: uid("w-ll"),
+          content: t`${fg(theme.blue)(line)}`,
+        }),
+      );
+    }
+    box.add(logoBox);
+
+    // Title + subtitle
     box.add(
       new TextRenderable(renderer, {
-        id: uid("w1"),
-        content: t`${fg(COL.accent)("Talent Search")}`,
+        id: uid("w-title"),
+        content: t`${bold(fg(theme.fg)("TALENT AGENT"))}`,
       }),
     );
     box.add(
       new TextRenderable(renderer, {
-        id: uid("w2"),
-        content: t`${dim("Type a query below to search for profiles")}`,
+        id: uid("w-subtitle"),
+        content: t`${fg(COL.dim)("Search for talent profiles using natural language")}`,
       }),
     );
+
+    // Examples section
+    const examples = new BoxRenderable(renderer, {
+      id: uid("w-examples"),
+      flexDirection: "column",
+      marginTop: 1,
+    });
+    examples.add(
+      new TextRenderable(renderer, {
+        id: uid("w-ex-label"),
+        content: t`${fg(theme.fgSecondary)("Examples:")}`,
+      }),
+    );
+    examples.add(
+      new TextRenderable(renderer, {
+        id: uid("w-ex-1"),
+        content: t`  ${fg(COL.dim)('"Find senior engineers with React experience"')}`,
+      }),
+    );
+    examples.add(
+      new TextRenderable(renderer, {
+        id: uid("w-ex-2"),
+        content: t`  ${fg(COL.dim)('"Show me candidates from top tech companies"')}`,
+      }),
+    );
+    examples.add(
+      new TextRenderable(renderer, {
+        id: uid("w-ex-3"),
+        content: t`  ${fg(COL.dim)('"Filter by location in San Francisco"')}`,
+      }),
+    );
+    box.add(examples);
+
+    // Keyboard shortcuts
+    const keys = new BoxRenderable(renderer, {
+      id: uid("w-keys"),
+      flexDirection: "column",
+      marginTop: 1,
+    });
+    keys.add(
+      new TextRenderable(renderer, {
+        id: uid("w-k-label"),
+        content: t`${fg(theme.fgSecondary)("Keyboard:")}`,
+      }),
+    );
+    keys.add(
+      new TextRenderable(renderer, {
+        id: uid("w-k-1"),
+        content: t`  ${fg(theme.fgSecondary)("Tab")}${fg(COL.dim)("  switch panel")}    ${fg(theme.fgSecondary)("j/k")}${fg(COL.dim)("  navigate")}`,
+      }),
+    );
+    keys.add(
+      new TextRenderable(renderer, {
+        id: uid("w-k-2"),
+        content: t`  ${fg(theme.fgSecondary)("Esc")}${fg(COL.dim)("  go back")}        ${fg(theme.fgSecondary)("0-9")}${fg(COL.dim)("  profile detail")}`,
+      }),
+    );
+    box.add(keys);
+
+    // Commands
+    const cmds = new BoxRenderable(renderer, {
+      id: uid("w-cmds"),
+      flexDirection: "column",
+      marginTop: 1,
+    });
+    cmds.add(
+      new TextRenderable(renderer, {
+        id: uid("w-c-label"),
+        content: t`${fg(theme.fgSecondary)("Commands:")}`,
+      }),
+    );
+    cmds.add(
+      new TextRenderable(renderer, {
+        id: uid("w-c-1"),
+        content: t`  ${fg(theme.fgSecondary)("/help")}${fg(COL.dim)("  show help")}    ${fg(theme.fgSecondary)("/detail n")}${fg(COL.dim)("  view profile")}`,
+      }),
+    );
+    cmds.add(
+      new TextRenderable(renderer, {
+        id: uid("w-c-2"),
+        content: t`  ${fg(theme.fgSecondary)("/clear")}${fg(COL.dim)(" reset")}       ${fg(theme.fgSecondary)("/quit")}${fg(COL.dim)("     exit")}`,
+      }),
+    );
+    box.add(cmds);
+
+    addContent(box);
+  }
+
+  function renderHelp(): void {
+    const box = new BoxRenderable(renderer, {
+      id: uid("help"),
+      padding: 1,
+      flexDirection: "column",
+    });
+
     box.add(
       new TextRenderable(renderer, {
-        id: uid("w3"),
-        content: t`${dim('Example: "Find React developers in Lisbon"')}`,
+        id: uid("help-title"),
+        content: t`${bold(fg(theme.fg)("Help"))}`,
       }),
     );
-    container.add(box);
+
+    // Slash commands
+    box.add(
+      new TextRenderable(renderer, {
+        id: uid("help-cmd-label"),
+        content: t`\n${fg(theme.fgSecondary)("Slash Commands")}`,
+      }),
+    );
+    const commands = [
+      ["/help, /h", "Show this help"],
+      ["/detail <n>, /d <n>", "View profile at index n"],
+      ["/clear", "Clear results and search history"],
+      ["/quit, /q", "Exit the TUI"],
+    ];
+    for (const [cmd, desc] of commands) {
+      box.add(
+        new TextRenderable(renderer, {
+          id: uid("help-cmd"),
+          content: t`  ${fg(theme.blue)(pad(cmd!, 22))}${fg(COL.dim)(desc!)}`,
+        }),
+      );
+    }
+
+    // Keyboard shortcuts
+    box.add(
+      new TextRenderable(renderer, {
+        id: uid("help-key-label"),
+        content: t`\n${fg(theme.fgSecondary)("Keyboard Shortcuts")}`,
+      }),
+    );
+    const shortcuts = [
+      ["Tab", "Cycle focus: input -> results -> history"],
+      ["Enter", "Submit search or select history item"],
+      ["Esc", "Go back to results / return to input"],
+      ["j / Down", "Navigate down (history, scroll results)"],
+      ["k / Up", "Navigate up (history, scroll results)"],
+      ["0-9", "Quick view: show profile detail at index"],
+      ["q", "Quit (when input is not focused)"],
+      ["Ctrl+C", "Force quit"],
+    ];
+    for (const [key, desc] of shortcuts) {
+      box.add(
+        new TextRenderable(renderer, {
+          id: uid("help-key"),
+          content: t`  ${fg(theme.blue)(pad(key!, 22))}${fg(COL.dim)(desc!)}`,
+        }),
+      );
+    }
+
+    addContent(box);
   }
 
   function renderError(error: string): void {
@@ -190,12 +390,12 @@ export function createResultsPanel(renderer: CliRenderer) {
         content: t`${fg(COL.error)("Error:")} ${error}`,
       }),
     );
-    container.add(box);
+    addContent(box);
   }
 
   function renderSearchResults(result: SearchResult): void {
     // Header
-    container.add(
+    addContent(
       new TextRenderable(renderer, {
         id: uid("search-header"),
         content: t`${bold(fg(COL.accent)("Search:"))} ${result.query}`,
@@ -204,28 +404,28 @@ export function createResultsPanel(renderer: CliRenderer) {
       }),
     );
 
-    container.add(
+    addContent(
       new TextRenderable(renderer, {
         id: uid("search-meta"),
-        content: t`${dim(`${result.totalMatches} total matches. Showing ${result.profiles.length}.`)}`,
+        content: t`${fg(COL.dim)(`${result.totalMatches} total matches. Showing ${result.profiles.length}.`)}`,
         paddingLeft: 1,
         paddingRight: 1,
       }),
     );
 
     if (result.profiles.length === 0) {
-      container.add(
+      addContent(
         new TextRenderable(renderer, {
           id: uid("no-results"),
-          content: t`${dim("No profiles found.")}`,
+          content: t`${fg(COL.dim)("No profiles found.")}`,
           padding: 1,
         }),
       );
       if (result.summary) {
-        container.add(
+        addContent(
           new TextRenderable(renderer, {
             id: uid("summary"),
-            content: t`${dim(result.summary)}`,
+            content: t`${fg(COL.dim)(result.summary)}`,
             paddingLeft: 1,
           }),
         );
@@ -274,13 +474,13 @@ export function createResultsPanel(renderer: CliRenderer) {
         content: t`${bold(fg(COL.header)(pad("Languages", W.lang)))}`,
       }),
     );
-    container.add(headerRow);
+    addContent(headerRow);
 
     // Separator
-    container.add(
+    addContent(
       new TextRenderable(renderer, {
         id: uid("separator"),
-        content: t`${dim("─".repeat(W.idx + W.name + W.role + W.location + W.lang))}`,
+        content: t`${fg(COL.dim)("─".repeat(W.idx + W.name + W.role + W.location + W.lang))}`,
         paddingLeft: 1,
       }),
     );
@@ -298,7 +498,7 @@ export function createResultsPanel(renderer: CliRenderer) {
         paddingLeft: 1,
         paddingRight: 1,
         flexDirection: "row",
-        backgroundColor: i % 2 === 0 ? undefined : "#1a1b26",
+        backgroundColor: i % 2 === 0 ? undefined : theme.bgCard,
       });
       row.add(
         new TextRenderable(renderer, {
@@ -330,7 +530,7 @@ export function createResultsPanel(renderer: CliRenderer) {
           content: t`${fg(COL.lang)(pad(languages, W.lang))}`,
         }),
       );
-      container.add(row);
+      addContent(row);
     }
 
     // Footer
@@ -344,26 +544,26 @@ export function createResultsPanel(renderer: CliRenderer) {
     footer.add(
       new TextRenderable(renderer, {
         id: uid("f-session"),
-        content: t`${dim(`Session: ${result.session}`)}`,
+        content: t`${fg(COL.dim)(`Session: ${result.session}`)}`,
       }),
     );
     footer.add(
       new TextRenderable(renderer, {
         id: uid("f-hints"),
-        content: t`${dim("[d + index] detail  [Esc] back  [Tab] switch panel")}`,
+        content: t`${fg(COL.dim)("/detail <n> or 0-9 for profile details")}`,
       }),
     );
-    container.add(footer);
+    addContent(footer);
   }
 
   function renderDetailView(result: DetailResult): void {
     const p = result.profile;
 
     // Header
-    container.add(
+    addContent(
       new TextRenderable(renderer, {
         id: uid("detail-header"),
-        content: t`${bold(fg(COL.accent)("═══ Profile Detail ═══"))}`,
+        content: t`${bold(fg(COL.accent)("Profile Detail"))}`,
         paddingLeft: 1,
         marginBottom: 1,
       }),
@@ -393,7 +593,7 @@ export function createResultsPanel(renderer: CliRenderer) {
       identity.add(
         new TextRenderable(renderer, {
           id: uid("id-loc"),
-          content: t`${dim(p.location)}`,
+          content: t`${fg(COL.dim)(p.location)}`,
         }),
       );
     if (p.tags?.length)
@@ -403,7 +603,7 @@ export function createResultsPanel(renderer: CliRenderer) {
           content: t`${fg(COL.lang)(p.tags.join(" · "))}`,
         }),
       );
-    container.add(identity);
+    addContent(identity);
 
     // Bio
     if (p.bio) {
@@ -426,7 +626,7 @@ export function createResultsPanel(renderer: CliRenderer) {
           content: `  ${p.bio}`,
         }),
       );
-      container.add(bioSection);
+      addContent(bioSection);
     }
 
     // GitHub
@@ -508,12 +708,12 @@ export function createResultsPanel(renderer: CliRenderer) {
           gh.add(
             new TextRenderable(renderer, {
               id: uid("gh-focus"),
-              content: t`  ${dim(`Focus: ${p.github.activitySummary.focusAreas}`)}`,
+              content: t`  ${fg(COL.dim)(`Focus: ${p.github.activitySummary.focusAreas}`)}`,
             }),
           );
         }
       }
-      container.add(gh);
+      addContent(gh);
     }
 
     // LinkedIn
@@ -550,7 +750,7 @@ export function createResultsPanel(renderer: CliRenderer) {
           }),
         );
       }
-      container.add(li);
+      addContent(li);
     }
 
     // Work Experience
@@ -576,19 +776,19 @@ export function createResultsPanel(renderer: CliRenderer) {
         exp.add(
           new TextRenderable(renderer, {
             id: uid("work-entry"),
-            content: t`  ${fg(COL.name)(e.title)} at ${e.company}${current}${dim(duration)}`,
+            content: t`  ${fg(COL.name)(e.title)} at ${e.company}${current}${fg(COL.dim)(duration)}`,
           }),
         );
         if (e.description) {
           exp.add(
             new TextRenderable(renderer, {
               id: uid("work-desc"),
-              content: t`    ${dim(truncate(e.description, 60))}`,
+              content: t`    ${fg(COL.dim)(truncate(e.description, 60))}`,
             }),
           );
         }
       }
-      container.add(exp);
+      addContent(exp);
     }
 
     // Education
@@ -612,18 +812,18 @@ export function createResultsPanel(renderer: CliRenderer) {
         edu.add(
           new TextRenderable(renderer, {
             id: uid("edu-entry"),
-            content: t`  ${e.degree || "Degree"} in ${e.fieldOfStudy || "N/A"} - ${e.school}${dim(years)}`,
+            content: t`  ${e.degree || "Degree"} in ${e.fieldOfStudy || "N/A"} - ${e.school}${fg(COL.dim)(years)}`,
           }),
         );
       }
-      container.add(edu);
+      addContent(edu);
     }
 
     // Footer
-    container.add(
+    addContent(
       new TextRenderable(renderer, {
         id: uid("detail-footer"),
-        content: t`${dim("[Esc] back to results  [Tab] switch panel")}`,
+        content: t`${fg(COL.dim)("[Esc] back to results")}`,
         paddingLeft: 1,
         marginTop: 1,
       }),
@@ -635,9 +835,16 @@ export function createResultsPanel(renderer: CliRenderer) {
 
   return {
     container,
+    scrollBox,
     update: (newState: Partial<ResultsState>) => {
       Object.assign(state, newState);
       render();
+    },
+    showHelp: () => {
+      state.result = null;
+      state.loading = false;
+      clearContent();
+      renderHelp();
     },
     getState: () => state,
   };
