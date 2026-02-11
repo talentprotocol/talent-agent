@@ -4,7 +4,7 @@
  * Runs the script via `node` as a subprocess to verify its output,
  * matching how npm would execute it after `npm install`.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -25,29 +25,33 @@ function pathWithoutBun(): string {
 
 /**
  * Helper to run the postinstall script and capture output.
+ *
+ * The script writes to /dev/tty (bypasses npm's stdio suppression) with
+ * a fallback to stderr.  In tests we force the fallback by setting
+ * FORCE_STDERR=1, which doesn't exist in the script -- instead we
+ * redirect /dev/tty writes by running without a controlling terminal.
+ * The simplest reliable approach: pipe the child's stdio so /dev/tty
+ * open fails, triggering the stderr fallback that we CAN capture.
  */
 function runPostinstall(env?: Record<string, string>): {
-  stdout: string;
-  stderr: string;
+  output: string;
   exitCode: number;
 } {
-  try {
-    const stdout = execFileSync("node", [SCRIPT_PATH], {
-      env: {
-        ...process.env,
-        ...env,
-      },
-      encoding: "utf-8",
-      timeout: 10000,
-    });
-    return { stdout, stderr: "", exitCode: 0 };
-  } catch (error: any) {
-    return {
-      stdout: error.stdout ?? "",
-      stderr: error.stderr ?? "",
-      exitCode: error.status ?? 1,
-    };
-  }
+  const result = spawnSync("node", [SCRIPT_PATH], {
+    env: {
+      ...process.env,
+      ...env,
+    },
+    encoding: "utf-8",
+    timeout: 10000,
+    // Piping stdio detaches the child from the controlling terminal,
+    // so openSync("/dev/tty") falls back to stderr which we capture.
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  return {
+    output: (result.stdout ?? "") + (result.stderr ?? ""),
+    exitCode: result.status ?? 1,
+  };
 }
 
 describe("scripts/postinstall.js", () => {
@@ -58,31 +62,31 @@ describe("scripts/postinstall.js", () => {
   });
 
   it("prints the success message", () => {
-    const { stdout } = runPostinstall();
+    const { output } = runPostinstall();
 
-    expect(stdout).toContain("talent-agent installed successfully!");
+    expect(output).toContain("talent-agent installed successfully!");
   });
 
   it("prints getting-started instructions", () => {
-    const { stdout } = runPostinstall();
+    const { output } = runPostinstall();
 
-    expect(stdout).toContain("talent-agent login");
-    expect(stdout).toContain("talent-agent --help");
-    expect(stdout).toContain("Get started:");
+    expect(output).toContain("talent-agent login");
+    expect(output).toContain("talent-agent --help");
+    expect(output).toContain("Get started:");
   });
 
   it("does not show the bun warning when bun is available", () => {
-    const { stdout } = runPostinstall();
+    const { output } = runPostinstall();
 
     // bun is available in this dev environment
-    expect(stdout).not.toContain("Bun runtime is required but was not found");
+    expect(output).not.toContain("Bun runtime is required but was not found");
   });
 
   it("shows the bun warning when bun is not on PATH", () => {
-    const { stdout } = runPostinstall({ PATH: pathWithoutBun() });
+    const { output } = runPostinstall({ PATH: pathWithoutBun() });
 
-    expect(stdout).toContain("Bun runtime is required but was not found");
-    expect(stdout).toContain("curl -fsSL https://bun.sh/install | bash");
-    expect(stdout).toContain("restart your terminal");
+    expect(output).toContain("Bun runtime is required but was not found");
+    expect(output).toContain("curl -fsSL https://bun.sh/install | bash");
+    expect(output).toContain("restart your terminal");
   });
 });

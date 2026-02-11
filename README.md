@@ -28,11 +28,13 @@ AI-powered talent profile search using natural language. CLI tool with interacti
 
 - [Bun](https://bun.sh/) v1.3+
 
-### Install from npm
+### Install and run
 
 ```bash
-npm install -g talent-agent
+npm install -g talent-agent && talent-agent
 ```
+
+This installs the CLI globally and launches the interactive TUI. If Bun is not installed, you will be prompted to install it.
 
 Or run without installing:
 
