@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- ### Features
+  - **Direct detail endpoint** -- `getDetail()` now calls the talent-pro API directly instead of routing through the LLM, significantly reducing latency and token usage.
+  - **TUI search history** -- Past chat sessions are loaded from the API on TUI startup, populating the History sidebar with previous conversations.
+  - **Localhost callback auth** -- CLI authentication now uses a temporary localhost HTTP server instead of server-side polling, fixing compatibility with Vercel deployments.
+  - **TUI slash commands** -- Added `/login` and `/logout` commands for in-TUI authentication management.
+  - **New Chat in sidebar** -- Added "New Chat" option to the TUI sidebar with active session tracking for multi-turn conversations.
+
+  ### Improvements
+  - Overhauled TUI color scheme with a restrained neutral palette and subtler focus borders.
+  - Reduced panel gaps, smaller title bar, and improved welcome screen spacing.
+
+  ### Docs
+  - Added ASCII logo and terminal screenshot to README.
+
 ## 1.0.0
 
 ### Features
