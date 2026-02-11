@@ -9,7 +9,8 @@
   "files": [
     "src",
     "skills",
-    "bin"
+    "bin",
+    "scripts/postinstall.js"
   ],
   "exports": {
     ".": "./src/lib.ts",

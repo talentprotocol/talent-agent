@@ -26,7 +26,7 @@ console.log("");
 if (!hasBun) {
   console.log("  Bun runtime is required but was not found.");
   console.log("  Install it:  curl -fsSL https://bun.sh/install | bash");
-  console.log("  Learn more:  https://bun.sh");
+  console.log("  Then restart your terminal (or run: source ~/.bashrc)");
   console.log("");
 }
 

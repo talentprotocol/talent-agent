@@ -83,5 +83,6 @@ describe("scripts/postinstall.js", () => {
 
     expect(stdout).toContain("Bun runtime is required but was not found");
     expect(stdout).toContain("curl -fsSL https://bun.sh/install | bash");
+    expect(stdout).toContain("restart your terminal");
   });
 });
