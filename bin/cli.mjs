@@ -24,7 +24,7 @@ try {
   console.error(
     "talent-agent requires the Bun runtime.\n\n" +
       "  Install it:  curl -fsSL https://bun.sh/install | bash\n" +
-      "  Learn more:  https://bun.sh\n",
+      "  Then restart your terminal (or run: source ~/.bashrc)\n",
   );
   process.exit(1);
 }
