@@ -5,11 +5,10 @@
  * /api/chat endpoint over HTTP with a Bearer token and parses the
  * streamed AI SDK UI message response.
  *
- * Manages local conversation sessions (message history) and extracts
- * structured tool results (profile lists, detail views) from the response.
+ * Sessions are persisted server-side via /api/ai-chat/sessions and cached
+ * locally in memory for the lifetime of the process.
  */
 import { nanoid } from "nanoid";
-import { readFileSync, writeFileSync } from "node:fs";
 
 import { getValidToken } from "./auth/store";
 import { toAIFriendlyError } from "./errors";
@@ -145,11 +144,6 @@ interface UIMessage {
   parts: UIMessagePart[];
 }
 
-interface ConversationMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
 interface Session {
   id: string;
   messages: UIMessage[];
@@ -185,45 +179,174 @@ export function getAllSessions(): Session[] {
   return Array.from(sessions.values());
 }
 
-// ─── Session Persistence ────────────────────────────────────────────────────
-
-interface SerializedSession {
-  id: string;
-  messages: UIMessage[];
-  lastResult: AgentResult | null;
-}
-
-export function saveSession(sessionId: string, filePath: string): void {
-  const session = sessions.get(sessionId);
-  if (!session) {
-    throw new Error(`Session "${sessionId}" not found.`);
-  }
-  const data: SerializedSession = {
-    id: session.id,
-    messages: session.messages,
-    lastResult: session.lastResult,
-  };
-  writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-}
-
-export function loadSession(filePath: string): string {
-  const content = readFileSync(filePath, "utf-8");
-  const data: SerializedSession = JSON.parse(content);
-  const session: Session = {
-    id: data.id,
-    messages: data.messages,
-    lastResult: data.lastResult,
-  };
-  sessions.set(session.id, session);
-  return session.id;
-}
-
 // ─── Remote API Client ──────────────────────────────────────────────────────
 
 function getTalentProUrl(): string {
   const url = process.env.TALENT_PRO_URL;
   if (!url) throw new Error("TALENT_PRO_URL is not set");
   return url.replace(/\/$/, "");
+}
+
+// ─── Server Session Persistence ─────────────────────────────────────────────
+
+/** Message shape from the /api/ai-chat persistence API. */
+interface AiChatMessage {
+  id: number;
+  role: "user" | "assistant" | "system";
+  content: string | null;
+  external_id: string | null;
+  tokens_input: number | null;
+  tokens_output: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  tool_calls?: Array<{
+    tool_call_id: string;
+    tool_name: string;
+    arguments: Record<string, unknown>;
+    result: Record<string, unknown> | null;
+    status: string;
+  }>;
+}
+
+/** Session shape from the /api/ai-chat persistence API. */
+interface AiChatSession {
+  id: number;
+  title: string | null;
+  status: string;
+  model_id: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  messages?: AiChatMessage[];
+}
+
+/**
+ * Create a new server-side session.
+ * Returns the numeric session ID as a string.
+ */
+async function createServerSession(token: string): Promise<string> {
+  const proUrl = getTalentProUrl();
+  const response = await fetch(`${proUrl}/api/ai-chat/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ session: { model_id: "claude-sonnet-4-20250514" } }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to create session: ${response.status}`);
+  }
+
+  const body = (await response.json()) as { session: AiChatSession };
+  return String(body.session.id);
+}
+
+/**
+ * Fetch a session and its messages from the server.
+ * Returns the AiChatMessage array (empty if the session has no messages).
+ */
+async function fetchSessionWithMessages(
+  token: string,
+  sessionId: string,
+): Promise<AiChatMessage[]> {
+  const proUrl = getTalentProUrl();
+  const response = await fetch(
+    `${proUrl}/api/ai-chat/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch session ${sessionId}: ${response.status}`);
+  }
+
+  const body = (await response.json()) as { session: AiChatSession };
+  return body.session.messages ?? [];
+}
+
+/**
+ * Persist messages to the server via bulk create.
+ *
+ * Fire-and-forget: errors are logged to stderr but do not fail the caller.
+ */
+async function persistMessages(
+  token: string,
+  sessionId: string,
+  messages: Array<{ role: string; content: string; external_id?: string }>,
+): Promise<void> {
+  try {
+    const proUrl = getTalentProUrl();
+    await fetch(
+      `${proUrl}/api/ai-chat/sessions/${encodeURIComponent(sessionId)}/messages/bulk`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ messages }),
+      },
+    );
+  } catch {
+    // Non-critical: don't break the user flow if persistence fails
+  }
+}
+
+/**
+ * Convert server AiChatMessage[] to the UIMessage[] format that /api/chat expects.
+ *
+ * Only text parts are included -- tool-call/tool-result parts are ephemeral
+ * and the server rejects them on subsequent requests.
+ */
+function aiChatMessagesToUIMessages(messages: AiChatMessage[]): UIMessage[] {
+  return messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({
+      id: m.external_id ?? String(m.id),
+      role: m.role as "user" | "assistant",
+      parts: m.content ? [{ type: "text", text: m.content }] : [],
+    }));
+}
+
+/**
+ * Ensure a session is loaded into the local cache.
+ *
+ * If the session ID exists in the cache, returns it immediately.
+ * Otherwise fetches from the server and populates the cache.
+ * If no session ID is given, creates a new server-side session.
+ */
+async function ensureSession(
+  token: string,
+  sessionId?: string,
+): Promise<Session> {
+  // Already cached locally
+  if (sessionId) {
+    const existing = sessions.get(sessionId);
+    if (existing) return existing;
+  }
+
+  // Create a new server session
+  if (!sessionId) {
+    const newId = await createServerSession(token);
+    const session: Session = { id: newId, messages: [], lastResult: null };
+    sessions.set(newId, session);
+    return session;
+  }
+
+  // Load from server
+  const serverMessages = await fetchSessionWithMessages(token, sessionId);
+  const uiMessages = aiChatMessagesToUIMessages(serverMessages);
+  const session: Session = {
+    id: sessionId,
+    messages: uiMessages,
+    lastResult: null,
+  };
+  sessions.set(sessionId, session);
+  return session;
 }
 
 /**
@@ -491,6 +614,9 @@ export interface QueryOptions {
  * Send a query to the talent agent via the talent-pro /api/chat endpoint.
  * Uses the session's conversation history for context (refinement).
  *
+ * Sessions are persisted server-side: new chats create a server session,
+ * existing session IDs load their history from the server (if not cached).
+ *
  * Returns both the result and metadata about the call.
  */
 export async function query(
@@ -498,15 +624,13 @@ export async function query(
   sessionId?: string,
   options?: QueryOptions,
 ): Promise<{ result: AgentResult; meta: AgentMeta }> {
-  const session = getOrCreateSession(sessionId);
-
   // Get auth token
   const token = await getValidToken();
   if (!token) {
     return {
       result: {
         type: "error",
-        session: session.id,
+        session: sessionId ?? "",
         error: "Not authenticated. Run 'talent-agent login' first.",
         code: "AUTH_ERROR",
       },
@@ -514,9 +638,13 @@ export async function query(
     };
   }
 
+  // Ensure session exists (creates server session or loads from server)
+  const session = await ensureSession(token, sessionId);
+
   // Build the user message in AI SDK UIMessage format
+  const userMessageId = nanoid();
   const userMessage: UIMessage = {
-    id: nanoid(),
+    id: userMessageId,
     role: "user",
     parts: [{ type: "text", text: input }],
   };
@@ -556,14 +684,25 @@ export async function query(
       );
     }
 
-    // Store assistant response in session history.
+    // Store assistant response in local session history.
     // Only keep text parts — tool-call/tool-result parts are ephemeral and
     // the server rejects them on subsequent requests (requires "data-" prefix).
+    const assistantMessageId = nanoid();
     session.messages.push({
-      id: nanoid(),
+      id: assistantMessageId,
       role: "assistant",
       parts: textResponse ? [{ type: "text", text: textResponse }] : [],
     });
+
+    // Persist both messages to the server (fire-and-forget)
+    persistMessages(token, session.id, [
+      { role: "user", content: input, external_id: userMessageId },
+      {
+        role: "assistant",
+        content: textResponse,
+        external_id: assistantMessageId,
+      },
+    ]);
 
     // Build structured result from tool outputs
     const result = buildResult(

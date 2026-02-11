@@ -8,11 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createAuthToken,
-  createCliSession,
   createNonce,
   emailRequestCode,
   emailVerifyCode,
-  pollCliSession,
 } from "./client";
 import {
   runEmailFlow,
@@ -33,6 +31,35 @@ vi.mock("node:readline", () => ({
   }),
 }));
 
+// Track the mock HTTP server's request handler and lifecycle
+let mockServerHandler: ((req: any, res: any) => void) | null = null;
+let mockServerPort = 54321;
+const mockServerListen = vi.fn();
+const mockServerClose = vi.fn();
+const mockServerOn = vi.fn();
+
+vi.mock("node:http", () => ({
+  createServer: vi.fn((handler: (req: any, res: any) => void) => {
+    mockServerHandler = handler;
+    return {
+      listen: mockServerListen.mockImplementation(
+        (_port: number, _host: string) => {
+          // Simulate the "listening" event asynchronously
+          setTimeout(() => {
+            const listeningCb = mockServerOn.mock.calls.find(
+              (c) => c[0] === "listening",
+            )?.[1];
+            listeningCb?.();
+          }, 0);
+        },
+      ),
+      close: mockServerClose,
+      on: mockServerOn,
+      address: () => ({ port: mockServerPort }),
+    };
+  }),
+}));
+
 // Mock auth client
 vi.mock("./client", () => ({
   emailRequestCode: vi.fn().mockResolvedValue({ success: true }),
@@ -42,11 +69,6 @@ vi.mock("./client", () => ({
   createNonce: vi.fn().mockResolvedValue({ nonce: "test-nonce" }),
   createAuthToken: vi.fn().mockResolvedValue({
     auth: { token: "wallet-jwt", expires_at: 1700000000 },
-  }),
-  createCliSession: vi.fn().mockResolvedValue({ sessionId: "mock-session-id" }),
-  pollCliSession: vi.fn().mockResolvedValue({
-    status: "complete",
-    auth: { token: "google-jwt", expires_at: 1700000000 },
   }),
   getCliAuthUrl: vi.fn().mockReturnValue("https://pro.talent.app"),
 }));
@@ -160,11 +182,38 @@ describe("runWalletFlow", () => {
 });
 
 describe("runGoogleFlow", () => {
-  it("creates a CLI session, polls, and saves credentials", async () => {
-    const creds = await runGoogleFlow();
+  beforeEach(() => {
+    mockServerHandler = null;
+    mockServerListen.mockClear();
+    mockServerClose.mockClear();
+    mockServerOn.mockClear();
+  });
 
-    expect(createCliSession).toHaveBeenCalled();
-    expect(pollCliSession).toHaveBeenCalledWith("mock-session-id");
+  it("starts a localhost server, opens browser, and saves credentials on callback", async () => {
+    // Run the flow — it will start the server and wait for the callback
+    const credsPromise = runGoogleFlow();
+
+    // Wait a tick for the server to "start"
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Simulate the browser redirecting back with token
+    expect(mockServerHandler).not.toBeNull();
+    const mockRes = {
+      writeHead: vi.fn(),
+      end: vi.fn(),
+    };
+    mockServerHandler!(
+      { url: "/callback?token=google-jwt&expires_at=1700000000" },
+      mockRes,
+    );
+
+    const creds = await credsPromise;
+
+    expect(mockServerListen).toHaveBeenCalledWith(0, "127.0.0.1");
+    expect(mockRes.writeHead).toHaveBeenCalledWith(200, {
+      "Content-Type": "text/html",
+    });
+    expect(mockServerClose).toHaveBeenCalled();
     expect(saveCredentials).toHaveBeenCalledWith({
       token: "google-jwt",
       expiresAt: 1700000000,
@@ -174,10 +223,42 @@ describe("runGoogleFlow", () => {
     expect(creds.authMethod).toBe("google");
   });
 
-  it("throws when session expires", async () => {
-    vi.mocked(pollCliSession).mockResolvedValueOnce({ status: "expired" });
+  it("returns 404 for non-callback paths", async () => {
+    const credsPromise = runGoogleFlow();
+    await new Promise((r) => setTimeout(r, 10));
 
-    await expect(runGoogleFlow()).rejects.toThrow("session expired");
+    // Request to wrong path
+    const mockRes404 = { writeHead: vi.fn(), end: vi.fn() };
+    mockServerHandler!({ url: "/wrong-path" }, mockRes404);
+    expect(mockRes404.writeHead).toHaveBeenCalledWith(404);
+
+    // Then the real callback comes
+    const mockRes = { writeHead: vi.fn(), end: vi.fn() };
+    mockServerHandler!(
+      { url: "/callback?token=google-jwt&expires_at=1700000000" },
+      mockRes,
+    );
+
+    await credsPromise;
+  });
+
+  it("returns 400 when callback is missing params", async () => {
+    const credsPromise = runGoogleFlow();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Callback without token
+    const mockRes400 = { writeHead: vi.fn(), end: vi.fn() };
+    mockServerHandler!({ url: "/callback?token=abc" }, mockRes400);
+    expect(mockRes400.writeHead).toHaveBeenCalledWith(400);
+
+    // Then valid callback
+    const mockRes = { writeHead: vi.fn(), end: vi.fn() };
+    mockServerHandler!(
+      { url: "/callback?token=google-jwt&expires_at=1700000000" },
+      mockRes,
+    );
+
+    await credsPromise;
   });
 });
 
@@ -202,12 +283,20 @@ describe("runInteractiveLogin", () => {
   });
 
   it("dispatches to google flow when method is 'google'", async () => {
-    const creds = await runInteractiveLogin("google");
+    const credsPromise = runInteractiveLogin("google");
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Simulate the browser callback
+    const mockRes = { writeHead: vi.fn(), end: vi.fn() };
+    mockServerHandler!(
+      { url: "/callback?token=google-jwt&expires_at=1700000000" },
+      mockRes,
+    );
+
+    const creds = await credsPromise;
 
     expect(creds.authMethod).toBe("google");
     expect(creds.token).toBe("google-jwt");
-    expect(createCliSession).toHaveBeenCalled();
-    expect(pollCliSession).toHaveBeenCalledWith("mock-session-id");
   });
 
   it("prompts for method selection when no method specified", async () => {

@@ -24,18 +24,6 @@ export interface CreateNonceResponse {
   nonce: string;
 }
 
-export interface CliSessionCreateResponse {
-  sessionId: string;
-}
-
-export interface CliSessionPollResponse {
-  status: "pending" | "complete" | "expired";
-  auth?: {
-    token: string;
-    expires_at: number;
-  };
-}
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function getProUrl(): string {
@@ -110,45 +98,6 @@ export async function emailVerifyCode(
   }
 
   return response.json() as Promise<AuthTokenResponse>;
-}
-
-/**
- * Create a CLI auth session for web-based Google login.
- * POST /api/auth/cli/sessions
- */
-export async function createCliSession(): Promise<CliSessionCreateResponse> {
-  const response = await fetch(`${getProUrl()}/api/auth/cli/sessions`, {
-    method: "POST",
-    headers: defaultHeaders(),
-  });
-
-  if (!response.ok) {
-    await handleErrorResponse(response, "Failed to create CLI auth session");
-  }
-
-  return response.json() as Promise<CliSessionCreateResponse>;
-}
-
-/**
- * Poll a CLI auth session for the authentication result.
- * GET /api/auth/cli/sessions/:sessionId
- */
-export async function pollCliSession(
-  sessionId: string,
-): Promise<CliSessionPollResponse> {
-  const response = await fetch(
-    `${getProUrl()}/api/auth/cli/sessions/${sessionId}`,
-    {
-      method: "GET",
-      headers: defaultHeaders(),
-    },
-  );
-
-  if (!response.ok) {
-    await handleErrorResponse(response, "Failed to poll CLI auth session");
-  }
-
-  return response.json() as Promise<CliSessionPollResponse>;
 }
 
 /**
