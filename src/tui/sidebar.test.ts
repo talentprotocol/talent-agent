@@ -67,9 +67,11 @@ describe("createSidebar", () => {
   const mockRenderer = {} as any;
   let state: SidebarState;
   let onSelectMock: ReturnType<typeof vi.fn>;
+  let onNewChatMock: ReturnType<typeof vi.fn>;
   beforeEach(() => {
     vi.clearAllMocks();
     onSelectMock = vi.fn();
+    onNewChatMock = vi.fn();
     state = {
       entries: [],
       selectedIndex: 0,
@@ -79,6 +81,7 @@ describe("createSidebar", () => {
   it("returns container, scrollBox, and control methods", () => {
     const sidebar = createSidebar(mockRenderer, state, {
       onSelect: onSelectMock,
+      onNewChat: onNewChatMock,
     });
 
     expect(sidebar.container).toBeDefined();
@@ -93,6 +96,7 @@ describe("createSidebar", () => {
   it("renders empty state message when no entries", () => {
     const sidebar = createSidebar(mockRenderer, state, {
       onSelect: onSelectMock,
+      onNewChat: onNewChatMock,
     });
 
     // Should have rendered empty state text via scrollBox.add
@@ -102,6 +106,7 @@ describe("createSidebar", () => {
   it("returns state reference", () => {
     const sidebar = createSidebar(mockRenderer, state, {
       onSelect: onSelectMock,
+      onNewChat: onNewChatMock,
     });
 
     expect(sidebar.getState()).toBe(state);
@@ -157,14 +162,16 @@ describe("createSidebar", () => {
           timestamp: new Date(),
         },
       ];
-      state.selectedIndex = 1;
+      // Max index = entries.length (0 = New Chat, 1..N = entries)
+      state.selectedIndex = 2;
 
       const sidebar = createSidebar(mockRenderer, state, {
         onSelect: onSelectMock,
+        onNewChat: onNewChatMock,
       });
 
       sidebar.moveDown();
-      expect(state.selectedIndex).toBe(1); // stays at last
+      expect(state.selectedIndex).toBe(2); // stays at last
     });
 
     it("moveUp decrements selectedIndex", () => {
@@ -231,7 +238,7 @@ describe("createSidebar", () => {
   });
 
   describe("select", () => {
-    it("calls onSelect with the selected entry", () => {
+    it("calls onNewChat when selectedIndex is 0", () => {
       const entry = {
         sessionId: "s1",
         query: "Find React devs",
@@ -243,11 +250,13 @@ describe("createSidebar", () => {
 
       const sidebar = createSidebar(mockRenderer, state, {
         onSelect: onSelectMock,
+        onNewChat: onNewChatMock,
       });
 
       sidebar.select();
 
-      expect(onSelectMock).toHaveBeenCalledWith(entry);
+      expect(onNewChatMock).toHaveBeenCalled();
+      expect(onSelectMock).not.toHaveBeenCalled();
     });
 
     it("calls onSelect with correct entry when selectedIndex > 0", () => {
@@ -264,10 +273,12 @@ describe("createSidebar", () => {
         timestamp: new Date(),
       };
       state.entries = [entry1, entry2];
-      state.selectedIndex = 1;
+      // Index 2 = entry2 (0 = New Chat, 1 = entry1, 2 = entry2)
+      state.selectedIndex = 2;
 
       const sidebar = createSidebar(mockRenderer, state, {
         onSelect: onSelectMock,
+        onNewChat: onNewChatMock,
       });
 
       sidebar.select();
@@ -275,13 +286,15 @@ describe("createSidebar", () => {
       expect(onSelectMock).toHaveBeenCalledWith(entry2);
     });
 
-    it("does not call onSelect when entries is empty", () => {
+    it("calls onNewChat when entries is empty and selectedIndex is 0", () => {
       const sidebar = createSidebar(mockRenderer, state, {
         onSelect: onSelectMock,
+        onNewChat: onNewChatMock,
       });
 
       sidebar.select();
 
+      expect(onNewChatMock).toHaveBeenCalled();
       expect(onSelectMock).not.toHaveBeenCalled();
     });
   });
@@ -290,6 +303,7 @@ describe("createSidebar", () => {
     it("re-renders when update is called", () => {
       const sidebar = createSidebar(mockRenderer, state, {
         onSelect: onSelectMock,
+        onNewChat: onNewChatMock,
       });
 
       // Clear mock calls from initial render

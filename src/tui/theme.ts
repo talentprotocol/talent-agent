@@ -64,8 +64,8 @@ const darkTheme: Theme = {
   fgMuted: "#737373", // --muted-foreground    (neutral.500)
 
   // Borders
-  border: "#262626", // --border  (neutral.800)
-  borderFocus: "#a3a3a3", // --        (neutral.400)
+  border: "#3a3a3a", // --border  (neutral.750 -- visible on dark bg)
+  borderFocus: "#737373", // --        (neutral.500 -- clear focus highlight)
   ring: "#525252", // --ring    (neutral.600)
 
   // Semantic
@@ -74,7 +74,7 @@ const darkTheme: Theme = {
   warning: "#f59e0b", // --warning      (amber.500)
 
   // Accent / Charts
-  blue: "#60a5fa", // --chart-1  (blue.400)
+  blue: "#d4d4d4", // neutral.300 (light gray accent on dark bg)
   teal: "#2dd4bf", // --chart-2  (teal.400)
   violet: "#a78bfa", // --chart-5  (violet.400)
 
@@ -107,8 +107,8 @@ const lightTheme: Theme = {
   destructive: "#b91c1c", // red.700      (5.3:1 on white)
   warning: "#b45309", // amber.700    (4.8:1 on white)
 
-  // Accent / Charts (use .700 shades for text legibility)
-  blue: "#1d4ed8", // blue.700     (6.9:1 on white)
+  // Accent / Charts
+  blue: "#1c1917", // stone.900 (near-black accent on light bg)
   teal: "#0f766e", // teal.700     (5.1:1 on white)
   violet: "#6d28d9", // violet.700   (7.4:1 on white)
 

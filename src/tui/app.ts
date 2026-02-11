@@ -40,7 +40,7 @@ import {
   query as rawQuery,
 } from "../agent";
 import { runInteractiveLogin } from "../auth/flows";
-import { getValidToken } from "../auth/store";
+import { clearCredentials, getValidToken } from "../auth/store";
 import { createResultsPanel } from "./results";
 import {
   type SearchHistoryEntry,
@@ -103,6 +103,9 @@ export async function runTUI(): Promise<void> {
 
   // ─── Initialize TUI ─────────────────────────────────────────────────────
 
+  // Clear the terminal so login output (or any prior text) doesn't bleed through
+  process.stdout.write("\x1b[2J\x1b[H");
+
   const renderer = await createCliRenderer({
     exitOnCtrlC: true,
   });
@@ -111,6 +114,9 @@ export async function runTUI(): Promise<void> {
 
   type FocusTarget = "input" | "results" | "sidebar";
   let currentFocus: FocusTarget = "input";
+
+  /** The session ID of the currently active chat (null = next query creates a new chat). */
+  let activeSessionId: string | null = null;
 
   // ─── Search History Sidebar ────────────────────────────────────────────────
 
@@ -121,9 +127,15 @@ export async function runTUI(): Promise<void> {
 
   const sidebar = createSidebar(renderer, sidebarState, {
     onSelect: async (entry: SearchHistoryEntry) => {
+      activeSessionId = entry.sessionId;
       resultsPanel.update({ loading: true, loadingMessage: "Loading..." });
       const result = await query(entry.query, entry.sessionId);
       resultsPanel.update({ result, loading: false });
+      setFocus("input");
+    },
+    onNewChat: () => {
+      activeSessionId = null;
+      resultsPanel.update({ result: null, loading: false });
       setFocus("input");
     },
   });
@@ -139,8 +151,6 @@ export async function runTUI(): Promise<void> {
     placeholder:
       'Search for talent... (e.g. "React devs in Lisbon") or type / for commands',
     width: "100%",
-    backgroundColor: theme.bg,
-    focusedBackgroundColor: theme.bgCard,
     textColor: theme.fg,
     cursorColor: theme.fg,
   });
@@ -180,20 +190,20 @@ export async function runTUI(): Promise<void> {
     height: 1,
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingLeft: 1,
     paddingRight: 1,
-    backgroundColor: theme.bgCard,
   });
   titleBar.add(
     new TextRenderable(renderer, {
       id: "title-text",
-      content: t`${fg(theme.blue)("█▄")} ${fg(theme.blue)("█▄")} ${bold(fg(theme.fg)("Talent Agent"))}`,
+      content: t`${bold(fg(theme.fg)("Talent Agent"))}`,
     }),
   );
   titleBar.add(
     new TextRenderable(renderer, {
       id: "title-hints",
-      content: t`${muted("[Tab] switch  [/] commands  [q] quit")}`,
+      content: t`${muted("Tab switch   / commands   q quit")}`,
     }),
   );
 
@@ -203,7 +213,7 @@ export async function runTUI(): Promise<void> {
     flexDirection: "row",
     flexGrow: 1,
     width: "100%",
-    gap: 1,
+    gap: 0,
   });
   content.add(sidebar.container);
   content.add(resultsPanel.container);
@@ -214,7 +224,7 @@ export async function runTUI(): Promise<void> {
     width: "100%",
     height: 3,
     borderStyle: "rounded",
-    borderColor: theme.borderFocus,
+    borderColor: theme.border,
     title: " Query ",
     titleAlignment: "left",
   });
@@ -226,7 +236,7 @@ export async function runTUI(): Promise<void> {
     width: "100%",
     height: "100%",
     flexDirection: "column",
-    gap: 1,
+    gap: 0,
   });
   root.add(titleBar);
   root.add(content);
@@ -300,6 +310,15 @@ export async function runTUI(): Promise<void> {
         updateStatusBar("Cleared results and history");
         break;
 
+      case "login":
+        handleLogin();
+        break;
+
+      case "logout":
+        clearCredentials();
+        handleLogin();
+        break;
+
       case "quit":
       case "q":
         process.exit(0);
@@ -309,6 +328,29 @@ export async function runTUI(): Promise<void> {
         updateStatusBar(`Unknown command: /${cmd}  Type /help for commands`);
         break;
     }
+  }
+
+  async function handleLogin(): Promise<void> {
+    // Suspend the TUI so the interactive login flow can use the terminal
+    renderer.suspend();
+    process.stdout.write("\x1b[2J\x1b[H"); // clear screen
+
+    try {
+      await runInteractiveLogin();
+      process.stdout.write("\nLogin successful. Returning to TUI...\n");
+    } catch (error) {
+      process.stdout.write(
+        `\nLogin failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    }
+
+    // Brief pause so the user can read the result
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Resume the TUI
+    renderer.resume();
+    updateStatusBar("Returned to TUI");
+    setFocus("input");
   }
 
   // ─── Search Execution ──────────────────────────────────────────────────────
@@ -322,19 +364,34 @@ export async function runTUI(): Promise<void> {
     });
 
     try {
-      const result = await query(queryText);
+      // Continue the active chat if one is selected, otherwise create a new one
+      const result = await query(queryText, activeSessionId ?? undefined);
 
-      // Add to search history
-      const historyEntry: SearchHistoryEntry = {
-        sessionId: result.session,
-        query: queryText,
-        resultCount: result.type === "search" ? result.totalMatches : 1,
-        timestamp: new Date(),
-      };
-      sidebarState.entries.unshift(historyEntry);
-      sidebarState.selectedIndex = 0;
+      if (activeSessionId) {
+        // Update existing sidebar entry with the latest query
+        const existing = sidebarState.entries.find(
+          (e) => e.sessionId === activeSessionId,
+        );
+        if (existing) {
+          existing.query = queryText;
+          existing.resultCount =
+            result.type === "search" ? result.totalMatches : 1;
+          existing.timestamp = new Date();
+        }
+      } else {
+        // New chat -- add to search history
+        const historyEntry: SearchHistoryEntry = {
+          sessionId: result.session,
+          query: queryText,
+          resultCount: result.type === "search" ? result.totalMatches : 1,
+          timestamp: new Date(),
+        };
+        sidebarState.entries.unshift(historyEntry);
+        sidebarState.selectedIndex = 1; // 0 = New Chat, 1 = first history entry
+        activeSessionId = result.session;
+      }
+
       sidebar.update();
-
       resultsPanel.update({ result, loading: false });
     } catch (error) {
       resultsPanel.update({
@@ -398,7 +455,7 @@ export async function runTUI(): Promise<void> {
   // Show command hints when typing "/"
   searchInput.on(InputRenderableEvents.INPUT, (value: string) => {
     if (value.startsWith("/")) {
-      updateStatusBar("/help  /detail <n>  /clear  /quit");
+      updateStatusBar("/help  /detail <n>  /clear  /login  /logout  /quit");
     } else if (currentFocus === "input") {
       updateStatusBar(getStatusHint());
     }
@@ -424,8 +481,8 @@ export async function runTUI(): Promise<void> {
     if (key.name === "escape") {
       const state = resultsPanel.getState();
       if (state.result?.type === "detail") {
-        // Go back to the search results
-        const lastSearch = sidebarState.entries[sidebarState.selectedIndex];
+        // Go back to the search results (offset by 1; index 0 = New Chat)
+        const lastSearch = sidebarState.entries[sidebarState.selectedIndex - 1];
         if (lastSearch) {
           resultsPanel.update({ loading: true });
           const result = await query(lastSearch.query, lastSearch.sessionId);
