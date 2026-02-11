@@ -1,4 +1,18 @@
-# talent-agent
+<div align="center">
+
+```
+  +#.
+  +#.
+  -#######.
+  .
+  +#.
+  +#.
+  -#######.
+```
+
+# Talent Agent CLI
+
+</div>
 
 [![npm version](https://img.shields.io/npm/v/talent-agent.svg)](https://www.npmjs.com/package/talent-agent)
 [![CI](https://github.com/talentprotocol/talent-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/talentprotocol/talent-agent/actions/workflows/ci.yml)
