@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1
+
+### Patch Changes
+
+- ### CI
+  - Publish to GitHub Packages alongside npm on release, making the package visible on the GitHub repo page.
+
 ## 1.1.0
 
 ### Minor Changes
