@@ -10,6 +10,27 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { openSync, writeSync, closeSync } from "node:fs";
+
+// npm v7+ suppresses all lifecycle script stdout/stderr for successful
+// scripts.  Writing directly to /dev/tty bypasses that capture and
+// prints straight to the user's terminal.  Falls back to stderr when
+// /dev/tty is unavailable (CI, Docker, non-interactive shells).
+let ttyFd;
+try {
+  ttyFd = openSync("/dev/tty", "w");
+} catch {
+  // /dev/tty not available -- fall back to stderr
+}
+
+const log = (msg = "") => {
+  const line = msg + "\n";
+  if (ttyFd !== undefined) {
+    writeSync(ttyFd, line);
+  } else {
+    process.stderr.write(line);
+  }
+};
 
 let hasBun = false;
 try {
@@ -19,19 +40,23 @@ try {
   // bun not found -- warn below
 }
 
-console.log("");
-console.log("  talent-agent installed successfully!");
-console.log("");
+log();
+log("  talent-agent installed successfully!");
+log();
 
 if (!hasBun) {
-  console.log("  Bun runtime is required but was not found.");
-  console.log("  Install it:  curl -fsSL https://bun.sh/install | bash");
-  console.log("  Then restart your terminal (or run: source ~/.bashrc)");
-  console.log("");
+  log("  Bun runtime is required but was not found.");
+  log("  Install it:  curl -fsSL https://bun.sh/install | bash");
+  log("  Then restart your terminal (or run: source ~/.bashrc)");
+  log();
 }
 
-console.log("  Get started:");
-console.log("    talent-agent login           Authenticate");
-console.log('    talent-agent "Find devs"     Search for talent');
-console.log("    talent-agent --help          Show all options");
-console.log("");
+log("  Get started:");
+log("    talent-agent login           Authenticate");
+log('    talent-agent "Find devs"     Search for talent');
+log("    talent-agent --help          Show all options");
+log();
+
+if (ttyFd !== undefined) {
+  closeSync(ttyFd);
+}
