@@ -94,6 +94,25 @@ describe("toAIFriendlyError", () => {
     expect(result.message).toContain("Retry");
   });
 
+  it("handles 403 Forbidden errors with subscription guidance", () => {
+    const result = toAIFriendlyError(
+      new Error("Request failed with status 403"),
+    );
+
+    expect(result.code).toBe("AUTH_ERROR");
+    expect(result.message).toContain("Pro subscription required");
+    expect(result.message).toContain("pro.talent.app/pricing");
+    expect(result.message).toContain("billing status");
+  });
+
+  it("handles Pro organization required errors with subscription guidance", () => {
+    const result = toAIFriendlyError(new Error("Pro organization required"));
+
+    expect(result.code).toBe("AUTH_ERROR");
+    expect(result.message).toContain("Pro subscription required");
+    expect(result.message).toContain("pro.talent.app/pricing");
+  });
+
   it("returns UNKNOWN_ERROR for unrecognized errors", () => {
     const result = toAIFriendlyError(
       new Error("Something unexpected happened"),
