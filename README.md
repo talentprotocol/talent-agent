@@ -1,3 +1,15 @@
+```
++#.
++#.
+-#######.
+.
++#.
++#.
+-#######.
+
+Talent Agent CLI
+```
+
 # talent-agent
 
 [![npm version](https://img.shields.io/npm/v/talent-agent.svg)](https://www.npmjs.com/package/talent-agent)
