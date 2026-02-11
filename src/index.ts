@@ -36,7 +36,6 @@ interface CliArgs {
     | "single-shot"
     | "pipe"
     | "serve"
-    | "session-cmd"
     | "login"
     | "logout"
     | "whoami";
@@ -47,9 +46,6 @@ interface CliArgs {
   help: boolean;
   version: boolean;
   debug: boolean;
-  sessionCmd?:
-    | { action: "save"; id: string; path: string }
-    | { action: "load"; path: string };
   loginMethod?: AuthMethod;
 }
 
@@ -94,23 +90,6 @@ function parseArgs(): CliArgs {
   if (args[0] === "whoami") {
     result.mode = "whoami";
     return result;
-  }
-
-  if (args[0] === "session") {
-    const subAction = args[1];
-    if (subAction === "save" && args[2] && args[3]) {
-      result.mode = "session-cmd";
-      result.sessionCmd = { action: "save", id: args[2], path: args[3] };
-      return result;
-    } else if (subAction === "load" && args[2]) {
-      result.mode = "session-cmd";
-      result.sessionCmd = { action: "load", path: args[2] };
-      return result;
-    } else {
-      console.error("Usage: talent-agent session save <id> <path>");
-      console.error("       talent-agent session load <path>");
-      process.exit(EXIT_USAGE_ERROR);
-    }
   }
 
   while (i < args.length) {
@@ -330,28 +309,6 @@ if (cliArgs.mode === "whoami") {
   console.log(`Token:       ${expired ? "EXPIRED" : "valid"}`);
   console.log(`Expires:     ${expiresDate.toLocaleString()}`);
   process.exit(EXIT_SUCCESS);
-}
-
-// ─── Session Commands ─────────────────────────────────────────────────────
-
-if (cliArgs.mode === "session-cmd") {
-  const { saveSession, loadSession } = await import("./agent");
-  const cmd = cliArgs.sessionCmd!;
-  try {
-    if (cmd.action === "save") {
-      saveSession(cmd.id, cmd.path);
-      console.log(`Session "${cmd.id}" saved to ${cmd.path}`);
-    } else {
-      const sessionId = loadSession(cmd.path);
-      console.log(`Session "${sessionId}" loaded from ${cmd.path}`);
-    }
-    process.exit(EXIT_SUCCESS);
-  } catch (error) {
-    console.error(
-      `Error: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    process.exit(EXIT_APP_ERROR);
-  }
 }
 
 // ─── Main Modes (require full env + auth) ─────────────────────────────────
