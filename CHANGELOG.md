@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.4
+
+### Patch Changes
+
+- Update install instructions to `npm install -g talent-agent && talent-agent` for immediate feedback, and improve postinstall message visibility on npm v7+.
+
 ## 1.1.3
 
 ### Patch Changes
