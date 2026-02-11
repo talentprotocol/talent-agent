@@ -4,11 +4,12 @@
   "description": "AI-powered talent search CLI for natural language queries",
   "type": "module",
   "bin": {
-    "talent-agent": "./src/index.ts"
+    "talent-agent": "./bin/cli.mjs"
   },
   "files": [
     "src",
-    "skills"
+    "skills",
+    "bin"
   ],
   "exports": {
     ".": "./src/lib.ts",
@@ -49,6 +50,7 @@
     "version:packages": "changeset version",
     "ci:version": "changeset version",
     "ci:publish": "changeset publish",
+    "postinstall": "node scripts/postinstall.js || true",
     "docker:build": "docker build -f docker/Dockerfile -t talent-agent .",
     "docker:serve": "docker compose -f docker/docker-compose.yml up talent-agent-mcp"
   },
