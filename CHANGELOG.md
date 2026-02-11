@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3
+
+### Patch Changes
+
+- Include postinstall script in published package and add terminal restart hint after Bun installation.
+
 ## 1.1.2
 
 ### Patch Changes
